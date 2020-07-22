@@ -74,6 +74,8 @@ namespace ImageSim.ViewModels
                 {
                     LocatedFiles.Add(new ImageFileVM() { FilePath = "File " + (i + 1), Hash = "ABCDEF" });
                 }
+
+                Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new ConflictCollectionVM() });
             }
         }
 
@@ -128,6 +130,7 @@ namespace ImageSim.ViewModels
                 var conflict = new ImageGroupVM(group);
                 coll.Conflicts.Add(conflict);
             }
+            this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = coll });
         }
     }
 
@@ -196,6 +199,12 @@ namespace ImageSim.ViewModels
         public ConflictCollectionVM()
         {
             Conflicts = new ObservableCollection<ImageGroupVM>();
+
+            if (IsInDesignMode)
+            {
+                Conflicts.Add(new ImageGroupVM(new ImageFileVM[] { new ImageFileVM(), new ImageFileVM() }));
+                Conflicts.Add(new ImageGroupVM(new ImageFileVM[] { new ImageFileVM(), new ImageFileVM() }));
+            }
         }
     }
 
