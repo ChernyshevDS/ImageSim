@@ -9,6 +9,10 @@
         mc:Ignorable="d"
         Title="{Binding WorkingFolder, TargetNullValue='Working folder is empty'}" Height="450" Width="800"
         DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}">
+    <Window.Resources>
+        <conv:BitmapFrameConverter x:Key="frameConv"/>
+    </Window.Resources>
+    
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -47,7 +51,7 @@
             </ListBox>
             <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" 
                     VerticalAlignment="Stretch" Background="{x:Static SystemColors.ActiveBorderBrush}"/>
-            <TabControl Grid.Column="2" TabStripPlacement="Top" ItemsSource="{Binding Tabs}">
+            <TabControl Grid.Column="2" TabStripPlacement="Top" ItemsSource="{Binding Tabs}" SelectedIndex="1">
                 <TabControl.Resources>
                     <DataTemplate DataType="{x:Type vm:ImageDetailsVM}">
                         <Grid>
@@ -66,19 +70,61 @@
                                 <Run Text="x"/>
                                 <Run Text="{Binding Height}"/>
                             </TextBlock>
-                            <Image Grid.Row="3" Source="{Binding FilePath}" Stretch="Uniform"/>
+                            <Image Grid.Row="3" Source="{Binding FilePath, Converter={StaticResource frameConv}}" Stretch="Uniform"/>
                         </Grid>
                     </DataTemplate>
 
                     <DataTemplate DataType="{x:Type vm:ConflictCollectionVM}">
                         <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="2*"/>
-                            </Grid.ColumnDefinitions>
-                            
-                            <ListBox ItemsSource="{Binding Conflicts}"/>
-                            
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <ContentControl Content="{Binding CurrentConflict}">
+                                <ContentControl.Resources>
+                                    <DataTemplate DataType="{x:Type vm:ImageGroupVM}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="2*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ListBox ItemsSource="{Binding Files}" IsSynchronizedWithCurrentItem="True">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding FilePath}" ToolTip="{Binding FilePath}">
+                                                            <TextBlock.ContextMenu>
+                                                                <ContextMenu>
+                                                                    <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
+                                                                </ContextMenu>
+                                                            </TextBlock.ContextMenu>
+                                                        </TextBlock>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                            <Image Grid.Column="1" Source="{Binding Files/FilePath, 
+                                                Converter={StaticResource frameConv}}" Stretch="Uniform"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ContentControl.Resources>
+                            </ContentControl>
+
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Button Content="Back" Command="{Binding PreviousConflictCommand}"/>
+                                <TextBlock Grid.Column="1" Margin="10,0,10,0">
+                                    <Run Text="Conflict "/>
+                                    <Run Text="{Binding CurrentIndex, Mode=OneWay}"/>
+                                    <Run Text=" of "/>
+                                    <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
+                                </TextBlock>
+                                <Button Grid.Column="2" Content="Next" Command="{Binding NextConflictCommand}"/>
+                            </Grid>
                         </Grid>
                     </DataTemplate>
                 </TabControl.Resources>

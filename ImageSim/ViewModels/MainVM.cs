@@ -5,6 +5,8 @@ using ImageSim.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -53,7 +55,9 @@ namespace ImageSim.ViewModels
             set
             {
                 if (Set(ref selectedFile, value))
+                {
                     Messenger.Default.Send(new CurrentFileChangedMessage(value));
+                }
             }
         }
 
@@ -62,11 +66,25 @@ namespace ImageSim.ViewModels
             ImageProvider = imageProvider;
             LocatedFiles = new ObservableCollection<ImageFileVM>();
 
-
             Tabs = new ObservableCollection<TabVM>()
             {
                 new TabVM() { Header = "Current file", ContentVM = new ImageDetailsVM() }
             };
+
+            Messenger.Default.Register<FileDeletingMessage>(this, x => {
+                var idx = LocatedFiles.IndexOf(x.File);
+                LocatedFiles.Remove(x.File);
+                idx = idx.Clamp(0, LocatedFiles.Count - 1);
+                SelectedFile = LocatedFiles[idx];
+                try
+                {
+                    File.Delete(x.File.FilePath);
+                }
+                catch (IOException ex)
+                {
+                    MessageBox.Show(ex.Message);
+                }
+            });
 
             if (IsInDesignMode)
             {
@@ -79,7 +97,7 @@ namespace ImageSim.ViewModels
             }
         }
 
-        private async void HandleSetWorkingFolder()
+        private void HandleSetWorkingFolder()
         {
             var dlg = new System.Windows.Forms.FolderBrowserDialog()
             {
@@ -89,7 +107,6 @@ namespace ImageSim.ViewModels
             if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 WorkingFolder = dlg.SelectedPath;
-                await ReloadFiles();
             }
         }
 
@@ -103,7 +120,7 @@ namespace ImageSim.ViewModels
             {
                 await foreach (var item in ImageProvider.GetFilesAsync(x => true).WithCancellation(cancellationSource.Token))
                 {
-                    LocatedFiles.Add(new ImageFileVM() { FilePath = item, Hash = Utils.GetFileHash(item) });
+                    LocatedFiles.Add(new ImageFileVM() { FilePath = item });
                 }
             }
             catch (OperationCanceledException)
@@ -123,6 +140,18 @@ namespace ImageSim.ViewModels
 
         private void HandleCompareHashes()
         {
+            int processed = 0;
+            var total = LocatedFiles.Count;
+            Parallel.ForEach(LocatedFiles, (x, state) => {
+                if (string.IsNullOrEmpty(x.Hash))
+                {
+                    x.Hash = Utils.GetFileHash(x.FilePath);
+                }
+
+                var proc = Interlocked.Increment(ref processed);
+                System.Diagnostics.Debug.WriteLine("Hashed {0} of {1}", proc, total);
+            });
+
             var groups = LocatedFiles.GroupBy(x => x.Hash).Where(x => x.Count() > 1);
             var coll = new ConflictCollectionVM();
             foreach (var group in groups)
@@ -144,6 +173,16 @@ namespace ImageSim.ViewModels
         public ImageFileVM File { get; }
     }
 
+    public class FileDeletingMessage : MessageBase
+    {
+        public FileDeletingMessage(ImageFileVM vm)
+        {
+            File = vm;
+        }
+
+        public ImageFileVM File { get; }
+    }
+
     public class ImageDetailsVM : ViewModelBase
     {
         private string filePath;
@@ -160,6 +199,15 @@ namespace ImageSim.ViewModels
         {
             Messenger.Default.Register<CurrentFileChangedMessage>(this, (x) =>
             {
+                if (x.File == null)
+                {
+                    FilePath = string.Empty;
+                    Hash = string.Empty;
+                    Width = 0;
+                    Height = 0;
+                    return;
+                }
+
                 FilePath = x.File.FilePath;
                 Hash = x.File.Hash;
                 using var img = System.Drawing.Image.FromFile(FilePath);
@@ -180,6 +228,10 @@ namespace ImageSim.ViewModels
             {
                 Files.Add(item);
             }
+
+            Messenger.Default.Register<FileDeletingMessage>(this, x => {
+                Files.Remove(x.File);
+            });
         }
     }
 
@@ -194,11 +246,55 @@ namespace ImageSim.ViewModels
 
     public class ConflictCollectionVM : ViewModelBase
     {
+        private RelayCommand previousConflictCommand;
+        private RelayCommand nextConflictCommand;
+        private ImageGroupVM currentConflict;
+
         public ObservableCollection<ImageGroupVM> Conflicts { get; }
-        
+
+        public ImageGroupVM CurrentConflict
+        {
+            get => currentConflict;
+            set
+            {
+                if (Set(ref currentConflict, value))
+                {
+                    NextConflictCommand.RaiseCanExecuteChanged();
+                    PreviousConflictCommand.RaiseCanExecuteChanged();
+                    RaisePropertyChanged(nameof(CurrentIndex));
+                }
+            }
+        }
+        public int CurrentIndex => Conflicts.IndexOf(CurrentConflict);
+
+        public RelayCommand NextConflictCommand => nextConflictCommand ??= new RelayCommand(HandleNext, CanGoNext);
+
+        private void HandleNext()
+        {
+            CurrentConflict = Conflicts[CurrentIndex + 1];
+        }
+
+        private bool CanGoNext()
+        {
+            return CurrentIndex >= 0 && CurrentIndex < Conflicts.Count - 1;
+        }
+
+        public RelayCommand PreviousConflictCommand => previousConflictCommand ??= new RelayCommand(HandlePrevious, CanGoBack);
+
+        private void HandlePrevious()
+        {
+            CurrentConflict = Conflicts[CurrentIndex - 1];
+        }
+
+        private bool CanGoBack()
+        {
+            return CurrentIndex > 0;
+        }
+
         public ConflictCollectionVM()
         {
             Conflicts = new ObservableCollection<ImageGroupVM>();
+            Conflicts.CollectionChanged += Conflicts_CollectionChanged;
 
             if (IsInDesignMode)
             {
@@ -206,15 +302,53 @@ namespace ImageSim.ViewModels
                 Conflicts.Add(new ImageGroupVM(new ImageFileVM[] { new ImageFileVM(), new ImageFileVM() }));
             }
         }
+
+        private void Conflicts_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            var oldItem = e.OldItems?.OfType<ImageGroupVM>().FirstOrDefault();
+            var newItem = e.NewItems?.OfType<ImageGroupVM>().FirstOrDefault();
+
+            switch (e.Action)
+            {
+                case NotifyCollectionChangedAction.Add:
+                    if (CurrentConflict == null)
+                    {
+                        CurrentConflict = Conflicts.First();
+                    }
+                    break;
+                case NotifyCollectionChangedAction.Remove:
+                case NotifyCollectionChangedAction.Replace:
+                    if (oldItem == CurrentConflict)
+                    {
+                        CurrentConflict = newItem;
+                    }
+                    break;
+                case NotifyCollectionChangedAction.Move:
+                    break;
+                case NotifyCollectionChangedAction.Reset:
+                    CurrentConflict = null;
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 
     public class ImageFileVM : ObservableObject
     {
+        private RelayCommand deleteCommand;
         private string filePath;
         private string hash;
 
         public string FilePath { get => filePath; set => Set(ref filePath, value); }
         public string Hash { get => hash; set => Set(ref hash, value); }
+
+        public RelayCommand DeleteCommand => deleteCommand ??= new RelayCommand(HandleDelete);
+
+        private void HandleDelete()
+        {
+            Messenger.Default.Send(new FileDeletingMessage(this));
+        }
     }
 
     public static class Utils
@@ -225,6 +359,11 @@ namespace ImageSim.ViewModels
             var alg = System.Security.Cryptography.MD5.Create();
             var hash = alg.ComputeHash(fs);
             return BitConverter.ToString(hash).Replace("-", string.Empty).ToUpperInvariant();
+        }
+
+        public static int Clamp(this int val, int min, int max)
+        {
+            return Math.Max(min, Math.Min(val, max));
         }
     }
 }
