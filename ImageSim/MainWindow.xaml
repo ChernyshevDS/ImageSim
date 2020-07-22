@@ -1,0 +1,80 @@
+﻿<Window x:Class="ImageSim.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ImageSim"
+        xmlns:vm="clr-namespace:ImageSim.ViewModels"
+        xmlns:conv="clr-namespace:ImageSim.Converters"
+        mc:Ignorable="d"
+        Title="{Binding WorkingFolder, TargetNullValue='Working folder is empty'}" Height="450" Width="800"
+        DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Menu>
+            <MenuItem Header="Files">
+                <MenuItem Header="Set working folder" Command="{Binding SetWorkingFolderCommand}"/>
+                <MenuItem Header="Reload files" Command="{Binding ReloadFilesCommand}" 
+                          IsEnabled="{Binding IsFileSearchInProgress, Converter={conv:InverseBooleanConverter}}"/>
+                <MenuItem Header="Cancel search" Command="{Binding CancelFileSearchCommand}" 
+                          IsEnabled="{Binding IsFileSearchInProgress}"/>
+            </MenuItem>
+
+            <MenuItem Header="Tools">
+                <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
+            </MenuItem>
+        </Menu>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="2.5*"/>
+            </Grid.ColumnDefinitions>
+
+            <ListBox ItemsSource="{Binding LocatedFiles}" IsSynchronizedWithCurrentItem="True" 
+                     SelectedItem="{Binding SelectedFile, Mode=OneWayToSource}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:ImageFileVM}">
+                        <TextBlock Text="{Binding FilePath}"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" 
+                    VerticalAlignment="Stretch" Background="{x:Static SystemColors.ActiveBorderBrush}"/>
+            <TabControl Grid.Column="2" TabStripPlacement="Top" ItemsSource="{Binding Tabs}">
+                <TabControl.Resources>
+                    <DataTemplate DataType="{x:Type vm:ImageDetailsVM}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="{Binding FilePath, StringFormat='Path: {0}'}"/>
+                            <TextBlock Grid.Row="1" Text="{Binding Hash, StringFormat='Hash: {0}'}"/>
+                            <Image Grid.Row="2" Source="{Binding FilePath}" Stretch="Uniform"/>
+                        </Grid>
+                    </DataTemplate>
+                </TabControl.Resources>
+
+                <TabControl.ItemContainerStyle>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Header" Value="{Binding Header}"/>
+                        <Setter Property="Content" Value="{Binding ContentVM}"/>
+                    </Style>
+                </TabControl.ItemContainerStyle>
+            </TabControl>
+        </Grid>
+
+        <StatusBar Grid.Row="2">
+            <TextBlock Text="{Binding LocatedFiles.Count, StringFormat='Files: {0}'}"/>
+        </StatusBar>
+    </Grid>
+</Window>
