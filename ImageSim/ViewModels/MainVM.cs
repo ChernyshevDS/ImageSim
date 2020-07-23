@@ -148,8 +148,12 @@ namespace ImageSim.ViewModels
         {
             var result = ProgressWindow.RunTaskAsync(RunFilesHashingAsync, "Hashing...", true);
 
-            if (result.Result.IsCompleted)
-            { 
+            if (!result.Result.IsCompleted)
+            {
+                var doContinue = MessageBox.Show("Hashing cancelled. Try to find similar files anyway?", "Warning", 
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (doContinue != MessageBoxResult.Yes)
+                    return;
             }
 
             var groups = LocatedFiles.Where(x => !string.IsNullOrEmpty(x.Hash))
