@@ -11,6 +11,8 @@
         DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}">
     <Window.Resources>
         <conv:BitmapFrameConverter x:Key="frameConv"/>
+        <BooleanToVisibilityConverter x:Key="boolToVis"/>
+        <conv:IntOffsetConverter x:Key="offsetConv"/>
     </Window.Resources>
     
     <Grid>
@@ -70,12 +72,28 @@
                                 <Run Text="x"/>
                                 <Run Text="{Binding Height}"/>
                             </TextBlock>
-                            <Image Grid.Row="3" Source="{Binding FilePath, Converter={StaticResource frameConv}}" Stretch="Uniform"/>
+                            <Image x:Name="image" Grid.Row="3" Source="{Binding FilePath, Converter={StaticResource frameConv}}" Stretch="Uniform"/>
+                            <Border x:Name="error" Grid.Row="3" Margin="10" BorderBrush="Red" BorderThickness="2" Visibility="Collapsed">
+                                <TextBlock Text="Can't create preview" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
                         </Grid>
+
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsValid}" Value="False">
+                                <Setter TargetName="image" Property="Source" Value="{x:Null}"/>
+                                <Setter TargetName="image" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="error" Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
                     </DataTemplate>
 
                     <DataTemplate DataType="{x:Type vm:ConflictCollectionVM}">
                         <Grid>
+                            <Grid.InputBindings>
+                                <KeyBinding Key="Left" Command="{Binding PreviousConflictCommand}"/>
+                                <KeyBinding Key="Right" Command="{Binding NextConflictCommand}"/>
+                            </Grid.InputBindings>
+                            
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*"/>
                                 <RowDefinition Height="Auto"/>
@@ -85,6 +103,10 @@
                                 <ContentControl.Resources>
                                     <DataTemplate DataType="{x:Type vm:ImageGroupVM}">
                                         <Grid>
+                                            <Grid.InputBindings>
+                                                <KeyBinding Key="Delete" Command="{Binding Files/DeleteCommand}"/>
+                                            </Grid.InputBindings>
+
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="2*"/>
@@ -119,7 +141,7 @@
                                 <Button Content="Back" Command="{Binding PreviousConflictCommand}"/>
                                 <TextBlock Grid.Column="1" Margin="10,0,10,0">
                                     <Run Text="Conflict "/>
-                                    <Run Text="{Binding CurrentIndex, Mode=OneWay}"/>
+                                    <Run Text="{Binding CurrentIndex, Mode=OneWay, Converter={StaticResource offsetConv}, ConverterParameter=1}"/>
                                     <Run Text=" of "/>
                                     <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
                                 </TextBlock>
@@ -131,7 +153,24 @@
 
                 <TabControl.ItemContainerStyle>
                     <Style TargetType="TabItem">
-                        <Setter Property="Header" Value="{Binding Header}"/>
+                        <Setter Property="Header" Value="{Binding}"/>
+                        <Setter Property="HeaderTemplate">
+                            <Setter.Value>
+                                <DataTemplate DataType="{x:Type vm:TabVM}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="{Binding Header}" Margin="4"/>
+                                        <Button Grid.Column="1" Content="X" Width="20" Height="20"
+                                                Command="{Binding CloseTabCommand}" 
+                                                Visibility="{Binding CanCloseTab, Converter={StaticResource boolToVis}}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </Setter.Value>
+                        </Setter>
                         <Setter Property="Content" Value="{Binding ContentVM}"/>
                     </Style>
                 </TabControl.ItemContainerStyle>

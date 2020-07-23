@@ -68,7 +68,7 @@ namespace ImageSim.ViewModels
 
             Tabs = new ObservableCollection<TabVM>()
             {
-                new TabVM() { Header = "Current file", ContentVM = new ImageDetailsVM() }
+                new TabVM() { Header = "Current file", ContentVM = new ImageDetailsVM(), CanCloseTab = false }
             };
 
             Messenger.Default.Register<FileDeletingMessage>(this, x => {
@@ -84,6 +84,12 @@ namespace ImageSim.ViewModels
                 {
                     MessageBox.Show(ex.Message);
                 }
+            });
+
+            Messenger.Default.Register<TabClosingMessage>(this, x => {
+                var tab = x.ClosingTab;
+                Tabs.Remove(tab);
+                GC.Collect();
             });
 
             if (IsInDesignMode)
@@ -140,19 +146,22 @@ namespace ImageSim.ViewModels
 
         private void HandleCompareHashes()
         {
-            int processed = 0;
-            var total = LocatedFiles.Count;
-            Parallel.ForEach(LocatedFiles, (x, state) => {
-                if (string.IsNullOrEmpty(x.Hash))
-                {
-                    x.Hash = Utils.GetFileHash(x.FilePath);
-                }
+            var result = ProgressWindow.RunTaskAsync(RunFilesHashingAsync, "Hashing...", true);
 
-                var proc = Interlocked.Increment(ref processed);
-                System.Diagnostics.Debug.WriteLine("Hashed {0} of {1}", proc, total);
-            });
+            if (result.Result.IsCompleted)
+            { 
+            }
 
-            var groups = LocatedFiles.GroupBy(x => x.Hash).Where(x => x.Count() > 1);
+            var groups = LocatedFiles.Where(x => !string.IsNullOrEmpty(x.Hash))
+                .GroupBy(x => x.Hash)
+                .Where(x => x.Count() > 1);
+
+            if (!groups.Any())
+            {
+                MessageBox.Show("No conflicts found!");
+                return;
+            }
+
             var coll = new ConflictCollectionVM();
             foreach (var group in groups)
             {
@@ -160,6 +169,28 @@ namespace ImageSim.ViewModels
                 coll.Conflicts.Add(conflict);
             }
             this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = coll });
+        }
+
+        private async Task<ParallelLoopResult> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
+        {
+            return await Task.Run<ParallelLoopResult>(() =>
+            {
+                int processed = 0;
+                var total = LocatedFiles.Count;
+                return Parallel.ForEach(LocatedFiles, (x, state) =>
+                {
+                    if(token.IsCancellationRequested)
+                        state.Break();
+
+                    if (string.IsNullOrEmpty(x.Hash))
+                    {
+                        x.Hash = Utils.GetFileHash(x.FilePath);
+                    }
+
+                    var proc = Interlocked.Increment(ref processed);
+                    progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
+                });
+            }, token);
         }
     }
 
@@ -189,11 +220,13 @@ namespace ImageSim.ViewModels
         private string hash;
         private int width;
         private int height;
+        private bool isValid;
 
         public string FilePath { get => filePath; set => Set(ref filePath, value); }
         public string Hash { get => hash; set => Set(ref hash, value); }
         public int Width { get => width; set => Set(ref width, value); }
         public int Height { get => height; set => Set(ref height, value); }
+        public bool IsValid { get => isValid; set => Set(ref isValid, value); }
 
         public ImageDetailsVM()
         {
@@ -205,14 +238,25 @@ namespace ImageSim.ViewModels
                     Hash = string.Empty;
                     Width = 0;
                     Height = 0;
+                    IsValid = false;
                     return;
                 }
 
                 FilePath = x.File.FilePath;
                 Hash = x.File.Hash;
-                using var img = System.Drawing.Image.FromFile(FilePath);
-                Width = img.Width;
-                Height = img.Height;
+                try
+                {
+                    using var img = System.Drawing.Image.FromFile(FilePath);
+                    Width = img.Width;
+                    Height = img.Height;
+                    IsValid = true;
+                }
+                catch (Exception)
+                {
+                    Width = 0;
+                    Height = 0;
+                    IsValid = false;
+                }
             });
         }
     }
@@ -235,13 +279,41 @@ namespace ImageSim.ViewModels
         }
     }
 
+    public class TabClosingMessage : MessageBase
+    { 
+        public TabVM ClosingTab { get; }
+
+        public TabClosingMessage(TabVM closingTab)
+        {
+            ClosingTab = closingTab;
+        }
+    }
+
     public class TabVM : ViewModelBase
     {
+        private RelayCommand closeTabCommand;
         private string header;
         private object contentVM;
+        private bool canCloseTab = true;
 
+        public RelayCommand CloseTabCommand => closeTabCommand ??= new RelayCommand(HandleCloseTab, () => canCloseTab);
+
+        public bool CanCloseTab
+        {
+            get => canCloseTab;
+            set
+            {
+                if (Set(ref canCloseTab, value))
+                    CloseTabCommand.RaiseCanExecuteChanged();
+            }
+        }
         public string Header { get => header; set => Set(ref header, value); }
         public object ContentVM { get => contentVM; set => Set(ref contentVM, value); }
+
+        private void HandleCloseTab()
+        {
+            Messenger.Default.Send(new TabClosingMessage(this));
+        }
     }
 
     public class ConflictCollectionVM : ViewModelBase
@@ -271,7 +343,8 @@ namespace ImageSim.ViewModels
 
         private void HandleNext()
         {
-            CurrentConflict = Conflicts[CurrentIndex + 1];
+            if(CanGoNext())
+                CurrentConflict = Conflicts[CurrentIndex + 1];
         }
 
         private bool CanGoNext()
@@ -283,7 +356,8 @@ namespace ImageSim.ViewModels
 
         private void HandlePrevious()
         {
-            CurrentConflict = Conflicts[CurrentIndex - 1];
+            if(CanGoBack())
+                CurrentConflict = Conflicts[CurrentIndex - 1];
         }
 
         private bool CanGoBack()
@@ -355,7 +429,7 @@ namespace ImageSim.ViewModels
     {
         public static string GetFileHash(string path)
         {
-            using var fs = System.IO.File.OpenRead(path);
+            using var fs = File.OpenRead(path);
             var alg = System.Security.Cryptography.MD5.Create();
             var hash = alg.ComputeHash(fs);
             return BitConverter.ToString(hash).Replace("-", string.Empty).ToUpperInvariant();

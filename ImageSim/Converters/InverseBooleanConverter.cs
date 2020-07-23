@@ -8,7 +8,7 @@ using System.Windows.Markup;
 
 namespace ImageSim.Converters
 {
-    class InverseBooleanConverter : MarkupExtension, IValueConverter
+    public sealed class InverseBooleanConverter : MarkupExtension, IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
