@@ -33,6 +33,7 @@
 
             <MenuItem Header="Tools">
                 <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
+                <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"/>
             </MenuItem>
         </Menu>
 

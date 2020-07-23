@@ -133,14 +133,14 @@ namespace ImageSim
             if (!string.IsNullOrEmpty(title))
                 pw.Title = title;
 
-            OperationResult<T> result = OperationResult<T>.Cancelled;
+            OperationResult<T> result = new OperationResult<T>(true, default);
 
             pw.Loaded += async (s, e) =>
             {
                 try
                 {
                     var taskResult = await task(pw.Progress, tokenSource.Token);
-                    result = new OperationResult<T>(taskResult);
+                    result = new OperationResult<T>(false, taskResult);
                     pw.OperationFinished = true;
                 }
                 catch (OperationCanceledException)
@@ -166,16 +166,10 @@ namespace ImageSim
 
     public struct OperationResult<T>
     {
-        public static readonly OperationResult<T> Cancelled = new OperationResult<T>(true, default);
-
         public T Result { get; }
         public bool IsCancelled { get; }
 
-        public OperationResult(T result) : this(false, result)
-        {
-        }
-
-        private OperationResult(bool isCancelled, T result)
+        public OperationResult(bool isCancelled, T result)
         {
             IsCancelled = isCancelled;
             Result = result;

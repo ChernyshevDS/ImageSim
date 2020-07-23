@@ -2,12 +2,14 @@
 using GalaSoft.MvvmLight.Command;
 using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Services;
+using ImageSim.Services.Storage;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,11 +21,13 @@ namespace ImageSim.ViewModels
     public class MainVM : ViewModelBase
     {
         private readonly IImageProvider ImageProvider;
+        private readonly IFileDataStorage FileStorage;
 
         private RelayCommand setWorkingFolderCmd;
         private RelayCommand reloadFilesCmd;
         private RelayCommand cancelFileSearchCmd;
         private RelayCommand compareHashesCommand;
+        private RelayCommand clearCacheCmd;
         private bool isFileSearchInProgress = false;
         private CancellationTokenSource cancellationSource;
         private ImageFileVM selectedFile;
@@ -33,6 +37,7 @@ namespace ImageSim.ViewModels
         public RelayCommand CancelFileSearchCommand => cancelFileSearchCmd ??= new RelayCommand(HandleCancelSearch);
 
         public RelayCommand CompareHashesCommand => compareHashesCommand ??= new RelayCommand(HandleCompareHashes);
+        public RelayCommand ClearCacheCommand => clearCacheCmd ??= new RelayCommand(async () => await FileStorage.Invalidate());
 
         public bool IsFileSearchInProgress { get => isFileSearchInProgress; set => Set(ref isFileSearchInProgress, value); }
         public ObservableCollection<ImageFileVM> LocatedFiles { get; }
@@ -61,9 +66,10 @@ namespace ImageSim.ViewModels
             }
         }
 
-        public MainVM(IImageProvider imageProvider)
+        public MainVM(IImageProvider imageProvider, IFileDataStorage storage)
         {
             ImageProvider = imageProvider;
+            FileStorage = storage;
             LocatedFiles = new ObservableCollection<ImageFileVM>();
 
             Tabs = new ObservableCollection<TabVM>()
@@ -158,7 +164,8 @@ namespace ImageSim.ViewModels
 
             var groups = LocatedFiles.Where(x => !string.IsNullOrEmpty(x.Hash))
                 .GroupBy(x => x.Hash)
-                .Where(x => x.Count() > 1);
+                .Where(x => x.Count() > 1)
+                .ToList();
 
             if (!groups.Any())
             {
@@ -175,26 +182,67 @@ namespace ImageSim.ViewModels
             this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = coll });
         }
 
-        private async Task<ParallelLoopResult> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
+        /*private async Task<ParallelLoopResult> Dummy(IProgress<ProgressArgs> progress, CancellationToken token)
         {
-            return await Task.Run<ParallelLoopResult>(() =>
+            await Task.Delay(5000, token);
+            return new ParallelLoopResult();
+        }*/
+
+        private async Task<int> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
+        {
+            int processed = 0;
+            var total = LocatedFiles.Count;
+
+            await Extensions.ForEachAsync(LocatedFiles, async (x, state) =>
             {
-                int processed = 0;
-                var total = LocatedFiles.Count;
-                return Parallel.ForEach(LocatedFiles, (x, state) =>
+                if (string.IsNullOrEmpty(x.Hash))
                 {
-                    if(token.IsCancellationRequested)
-                        state.Break();
+                    var needCacheUpdate = false;
 
-                    if (string.IsNullOrEmpty(x.Hash))
+                    var cachedRecord = await FileStorage.GetFileRecordAsync(x.FilePath);
+                    if (cachedRecord == null)   //no cache record found
+                        cachedRecord = PersistentFileRecord.Create(x.FilePath);
+
+                    var time = PersistentFileRecord.ReadModificationTime(x.FilePath);
+                    if (time.HasValue)
                     {
-                        x.Hash = Utils.GetFileHash(x.FilePath);
-                    }
+                        if (cachedRecord.Modified == time)   //cached record is valid - file hasn't been changed
+                        {
+                            if (cachedRecord.TryGetData(HashData.Key, out HashData data))   //success - use cached value
+                            {
+                                x.Hash = data.Hash;
+                                System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(x.FilePath)}: loaded from cache");
+                            }
+                            else    //no cached Hash
+                            {
+                                x.Hash = Utils.GetFileHash(x.FilePath);
+                                System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(x.FilePath)}: no cached hash, calculated");
+                                needCacheUpdate = true;
+                            }
+                        }
+                        else    //cached value expired
+                        {
+                            await FileStorage.RemoveFileRecordAsync(x.FilePath);
+                            x.Hash = Utils.GetFileHash(x.FilePath);
+                            System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(x.FilePath)}: file modified, hash calculated");
+                            needCacheUpdate = true;
+                        }
+                    } // else current file can't be read - skip
 
-                    var proc = Interlocked.Increment(ref processed);
-                    progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
-                });
-            }, token);
+                    if (needCacheUpdate)
+                    {
+                        cachedRecord.SetData(new HashData() { Hash = x.Hash });
+                        await FileStorage.UpdateFileRecordAsync(x.FilePath, cachedRecord);
+                        System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(x.FilePath)}: cache updated");
+                    }
+                }
+
+                var proc = Interlocked.Increment(ref processed);
+                progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
+                return true;
+            }, token, 4);
+
+            return new OperationResult<int>()
         }
     }
 
@@ -442,6 +490,82 @@ namespace ImageSim.ViewModels
         public static int Clamp(this int val, int min, int max)
         {
             return Math.Max(min, Math.Min(val, max));
+        }
+    }
+
+    public static class Extensions
+    {
+        /*public static Task ForEachAsync<TSource, TResult>(
+            this IEnumerable<TSource> source,
+            Func<TSource, Task<TResult>> taskSelector, Action<TSource, TResult> resultProcessor)
+        {
+            var oneAtATime = new SemaphoreSlim(5, 10);
+            return Task.WhenAll(
+                from item in source
+                select ProcessAsync(item, taskSelector, resultProcessor, oneAtATime));
+        }
+
+        private static async Task ProcessAsync<TSource, TResult>(
+            TSource item,
+            Func<TSource, Task<TResult>> taskSelector, Action<TSource, TResult> resultProcessor,
+            SemaphoreSlim oneAtATime)
+        {
+            await oneAtATime.WaitAsync();
+            TResult result = await taskSelector(item);
+            try
+            {
+                resultProcessor(item, result);
+            }
+            finally
+            {
+                oneAtATime.Release();
+            }
+        }*/
+
+        public static Task ForEachAsync<TSource>(this IEnumerable<TSource> source, Func<TSource, Task> itemProcessor, int max_processes)
+        {
+            var semaphore = new SemaphoreSlim(max_processes, max_processes);
+            return Task.WhenAll(source.Select(x => ProcessItem(x, itemProcessor, semaphore)));
+        }
+
+        private static async Task ProcessItem<TSource>(TSource item, Func<TSource, Task> itemProcessor, SemaphoreSlim semaphore)
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                await itemProcessor(item);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        public static Task<TResult[]> ForEachAsync<TSource, TResult>(
+            this IEnumerable<TSource> source, 
+            Func<TSource, CancellationToken, Task<TResult>> itemProcessor, 
+            CancellationToken token,
+            int max_processes)
+        {
+            var semaphore = new SemaphoreSlim(max_processes, max_processes);
+            return Task.WhenAll(source.Select(x => ProcessItem(x, itemProcessor, token, semaphore)));
+        }
+
+        private static async Task<TResult> ProcessItem<TSource, TResult>(
+            TSource item, 
+            Func<TSource, CancellationToken, Task<TResult>> itemProcessor, 
+            CancellationToken token,
+            SemaphoreSlim semaphore)
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                return await itemProcessor(item, token);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
         }
     }
 }
