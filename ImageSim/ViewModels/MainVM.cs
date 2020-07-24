@@ -1,6 +1,7 @@
 ﻿using GalaSoft.MvvmLight;
 using GalaSoft.MvvmLight.Command;
 using GalaSoft.MvvmLight.Messaging;
+using ImageSim.Messages;
 using ImageSim.Services;
 using ImageSim.Services.Storage;
 using System;
@@ -30,7 +31,7 @@ namespace ImageSim.ViewModels
         private RelayCommand clearCacheCmd;
         private bool isFileSearchInProgress = false;
         private CancellationTokenSource cancellationSource;
-        private ImageFileVM selectedFile;
+        private GenericFileVM selectedFile;
 
         public RelayCommand SetWorkingFolderCommand => setWorkingFolderCmd ??= new RelayCommand(HandleSetWorkingFolder);
         public RelayCommand ReloadFilesCommand => reloadFilesCmd ??= new RelayCommand(async () => await ReloadFiles());
@@ -40,7 +41,7 @@ namespace ImageSim.ViewModels
         public RelayCommand ClearCacheCommand => clearCacheCmd ??= new RelayCommand(async () => await FileStorage.Invalidate());
 
         public bool IsFileSearchInProgress { get => isFileSearchInProgress; set => Set(ref isFileSearchInProgress, value); }
-        public ObservableCollection<ImageFileVM> LocatedFiles { get; }
+        public ObservableCollection<GenericFileVM> LocatedFiles { get; }
         public ObservableCollection<TabVM> Tabs { get; }
         public string WorkingFolder
         {
@@ -54,7 +55,7 @@ namespace ImageSim.ViewModels
                 }
             }
         }
-        public ImageFileVM SelectedFile
+        public GenericFileVM SelectedFile
         {
             get => selectedFile;
             set
@@ -70,12 +71,27 @@ namespace ImageSim.ViewModels
         {
             ImageProvider = imageProvider;
             FileStorage = storage;
-            LocatedFiles = new ObservableCollection<ImageFileVM>();
+            LocatedFiles = new ObservableCollection<GenericFileVM>();
 
-            Tabs = new ObservableCollection<TabVM>()
+            var detailsTab = new TabVM() 
             {
-                new TabVM() { Header = "Current file", ContentVM = new ImageDetailsVM(), CanCloseTab = false }
+                Header = "Current file",
+                ContentVM = new EmptyDetailsVM(),
+                CanCloseTab = false
             };
+            Tabs = new ObservableCollection<TabVM>() { detailsTab };
+
+            Messenger.Default.Register<CurrentFileChangedMessage>(this, x =>
+            {
+                if (x.File == null)
+                {
+                    detailsTab.ContentVM = new EmptyDetailsVM();
+                }
+                else 
+                {
+                    detailsTab.ContentVM = GetDetailsVMByFileExtension(x.File);
+                }
+            }, true);
 
             Messenger.Default.Register<FileDeletingMessage>(this, x => {
                 var idx = LocatedFiles.IndexOf(x.File);
@@ -102,11 +118,30 @@ namespace ImageSim.ViewModels
             {
                 for (int i = 0; i < 10; i++)
                 {
-                    LocatedFiles.Add(new ImageFileVM() { FilePath = "File " + (i + 1), Hash = "ABCDEF" });
+                    LocatedFiles.Add(new GenericFileVM() { FilePath = "File " + (i + 1), Hash = "ABCDEF" });
                 }
 
                 Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new ConflictCollectionVM() });
             }
+        }
+
+        private static readonly HashSet<string> image_extensions = new HashSet<string>() 
+        { 
+            "JPG", "JPEG", "TIFF", "GIF", "PNG", "BMP", "EMF", "EXIF", "ICO", "WMF"
+        };
+        private static bool IsImageExtension(string ext)
+        {
+            return image_extensions.Contains(ext.ToUpperInvariant());
+        }
+
+        private static ViewModelBase GetDetailsVMByFileExtension(GenericFileVM vm)
+        {
+            var ext = Path.GetExtension(vm.FilePath);
+            ext = ext.TrimStart('.');
+            if (IsImageExtension(ext))
+                return new ImageDetailsVM(vm);
+            else
+                return new FileDetailsVM(vm);
         }
 
         private void HandleSetWorkingFolder()
@@ -132,7 +167,7 @@ namespace ImageSim.ViewModels
             {
                 await foreach (var item in ImageProvider.GetFilesAsync(x => true).WithCancellation(cancellationSource.Token))
                 {
-                    LocatedFiles.Add(new ImageFileVM() { FilePath = item });
+                    LocatedFiles.Add(new GenericFileVM() { FilePath = item });
                 }
             }
             catch (OperationCanceledException)
@@ -176,35 +211,18 @@ namespace ImageSim.ViewModels
             var coll = new ConflictCollectionVM();
             foreach (var group in groups)
             {
-                var conflict = new ImageGroupVM(group);
+                var conflict = new FileGroupVM(group);
                 coll.Conflicts.Add(conflict);
             }
             this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = coll });
         }
-
-        /*private async Task<int> DummyAsync(IProgress<ProgressArgs> progress, CancellationToken token)
-        {
-            const int total = 100;
-            var items = Enumerable.Range(1, total).ToList();
-            
-            int processed = 0;
-
-            var result = await items.ForEachAsync(async (idx, lt) => {
-                await Task.Delay(1000, token);
-                System.Diagnostics.Debug.WriteLine(idx);
-                var proc = Interlocked.Increment(ref processed);
-                progress.Report(new ProgressArgs($"Proc {idx} of {total}", 100.0 * proc / total));
-                return idx;
-            }, token, 10);
-            return result.Sum();
-        }*/
 
         private async Task<int> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
         {
             int processed = 0;
             var total = LocatedFiles.Count;
 
-            var results = await Extensions.ForEachAsync(LocatedFiles, async (x) =>
+            var results = await TaskExtensions.ForEachAsync(LocatedFiles, async (x) =>
             {
                 if (string.IsNullOrEmpty(x.Hash))
                 {
@@ -257,80 +275,69 @@ namespace ImageSim.ViewModels
         }
     }
 
-    public class CurrentFileChangedMessage : MessageBase
+    public class EmptyDetailsVM : ViewModelBase
     {
-        public CurrentFileChangedMessage(ImageFileVM file)
-        {
-            File = file;
-        }
-
-        public ImageFileVM File { get; }
     }
 
-    public class FileDeletingMessage : MessageBase
-    {
-        public FileDeletingMessage(ImageFileVM vm)
-        {
-            File = vm;
-        }
-
-        public ImageFileVM File { get; }
-    }
-
-    public class ImageDetailsVM : ViewModelBase
+    public class FileDetailsVM : ViewModelBase
     {
         private string filePath;
         private string hash;
-        private int width;
-        private int height;
-        private bool isValid;
+        private long fileSize;
 
         public string FilePath { get => filePath; set => Set(ref filePath, value); }
         public string Hash { get => hash; set => Set(ref hash, value); }
-        public int Width { get => width; set => Set(ref width, value); }
-        public int Height { get => height; set => Set(ref height, value); }
-        public bool IsValid { get => isValid; set => Set(ref isValid, value); }
+        public long FileSize { get => fileSize; set => Set(ref fileSize, value); }
 
-        public ImageDetailsVM()
+        public FileDetailsVM(GenericFileVM file)
         {
-            Messenger.Default.Register<CurrentFileChangedMessage>(this, (x) =>
-            {
-                if (x.File == null)
-                {
-                    FilePath = string.Empty;
-                    Hash = string.Empty;
-                    Width = 0;
-                    Height = 0;
-                    IsValid = false;
-                    return;
-                }
+            FilePath = file.FilePath;
+            Hash = file.Hash;
 
-                FilePath = x.File.FilePath;
-                Hash = x.File.Hash;
-                try
-                {
-                    using var img = System.Drawing.Image.FromFile(FilePath);
-                    Width = img.Width;
-                    Height = img.Height;
-                    IsValid = true;
-                }
-                catch (Exception)
-                {
-                    Width = 0;
-                    Height = 0;
-                    IsValid = false;
-                }
-            });
+            FileInfo fi = new FileInfo(FilePath);
+            FileSize = fi.Length;
         }
     }
 
-    public class ImageGroupVM : ViewModelBase
-    { 
-        public ObservableCollection<ImageFileVM> Files { get; }
+    public class ImageDetailsVM : FileDetailsVM
+    {
+        private int width;
+        private int height;
+        private bool isValid;
+        private string format;
 
-        public ImageGroupVM(IEnumerable<ImageFileVM> conflictingFiles)
+        public int Width { get => width; set => Set(ref width, value); }
+        public int Height { get => height; set => Set(ref height, value); }
+        public string Format { get => format; set => Set(ref format, value); }
+        public bool IsValid { get => isValid; set => Set(ref isValid, value); }
+
+        public ImageDetailsVM(GenericFileVM vm) : base(vm)
         {
-            Files = new ObservableCollection<ImageFileVM>();
+            try
+            {
+                using var img = System.Drawing.Image.FromFile(FilePath);
+                Width = img.Width;
+                Height = img.Height;
+                Format = img.RawFormat.ToString();
+                IsValid = true;
+            }
+            catch (Exception)
+            {
+                Width = 0;
+                Height = 0;
+                Format = "Unknown format";
+                IsValid = false;
+            }
+        }
+    }
+
+    public class FileGroupVM : ViewModelBase
+    { 
+        public ObservableCollection<GenericFileVM> Files { get; }
+
+        public FileGroupVM(IEnumerable<GenericFileVM> conflictingFiles)
+        {
+            Files = new ObservableCollection<GenericFileVM>();
             foreach (var item in conflictingFiles)
             {
                 Files.Add(item);
@@ -342,52 +349,15 @@ namespace ImageSim.ViewModels
         }
     }
 
-    public class TabClosingMessage : MessageBase
-    { 
-        public TabVM ClosingTab { get; }
-
-        public TabClosingMessage(TabVM closingTab)
-        {
-            ClosingTab = closingTab;
-        }
-    }
-
-    public class TabVM : ViewModelBase
-    {
-        private RelayCommand closeTabCommand;
-        private string header;
-        private object contentVM;
-        private bool canCloseTab = true;
-
-        public RelayCommand CloseTabCommand => closeTabCommand ??= new RelayCommand(HandleCloseTab, () => canCloseTab);
-
-        public bool CanCloseTab
-        {
-            get => canCloseTab;
-            set
-            {
-                if (Set(ref canCloseTab, value))
-                    CloseTabCommand.RaiseCanExecuteChanged();
-            }
-        }
-        public string Header { get => header; set => Set(ref header, value); }
-        public object ContentVM { get => contentVM; set => Set(ref contentVM, value); }
-
-        private void HandleCloseTab()
-        {
-            Messenger.Default.Send(new TabClosingMessage(this));
-        }
-    }
-
     public class ConflictCollectionVM : ViewModelBase
     {
         private RelayCommand previousConflictCommand;
         private RelayCommand nextConflictCommand;
-        private ImageGroupVM currentConflict;
+        private FileGroupVM currentConflict;
 
-        public ObservableCollection<ImageGroupVM> Conflicts { get; }
+        public ObservableCollection<FileGroupVM> Conflicts { get; }
 
-        public ImageGroupVM CurrentConflict
+        public FileGroupVM CurrentConflict
         {
             get => currentConflict;
             set
@@ -430,20 +400,20 @@ namespace ImageSim.ViewModels
 
         public ConflictCollectionVM()
         {
-            Conflicts = new ObservableCollection<ImageGroupVM>();
+            Conflicts = new ObservableCollection<FileGroupVM>();
             Conflicts.CollectionChanged += Conflicts_CollectionChanged;
 
             if (IsInDesignMode)
             {
-                Conflicts.Add(new ImageGroupVM(new ImageFileVM[] { new ImageFileVM(), new ImageFileVM() }));
-                Conflicts.Add(new ImageGroupVM(new ImageFileVM[] { new ImageFileVM(), new ImageFileVM() }));
+                Conflicts.Add(new FileGroupVM(new GenericFileVM[] { new GenericFileVM(), new GenericFileVM() }));
+                Conflicts.Add(new FileGroupVM(new GenericFileVM[] { new GenericFileVM(), new GenericFileVM() }));
             }
         }
 
         private void Conflicts_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            var oldItem = e.OldItems?.OfType<ImageGroupVM>().FirstOrDefault();
-            var newItem = e.NewItems?.OfType<ImageGroupVM>().FirstOrDefault();
+            var oldItem = e.OldItems?.OfType<FileGroupVM>().FirstOrDefault();
+            var newItem = e.NewItems?.OfType<FileGroupVM>().FirstOrDefault();
 
             switch (e.Action)
             {
@@ -467,92 +437,6 @@ namespace ImageSim.ViewModels
                     break;
                 default:
                     break;
-            }
-        }
-    }
-
-    public class ImageFileVM : ObservableObject
-    {
-        private RelayCommand deleteCommand;
-        private string filePath;
-        private string hash;
-
-        public string FilePath { get => filePath; set => Set(ref filePath, value); }
-        public string Hash { get => hash; set => Set(ref hash, value); }
-
-        public RelayCommand DeleteCommand => deleteCommand ??= new RelayCommand(HandleDelete);
-
-        private void HandleDelete()
-        {
-            Messenger.Default.Send(new FileDeletingMessage(this));
-        }
-    }
-
-    public static class Utils
-    {
-        public static string GetFileHash(string path)
-        {
-            Thread.Sleep(1000);
-            using var fs = File.OpenRead(path);
-            var alg = System.Security.Cryptography.MD5.Create();
-            var hash = alg.ComputeHash(fs);
-            return BitConverter.ToString(hash).Replace("-", string.Empty).ToUpperInvariant();
-        }
-
-        public static Task<string> GetFileHashAsync(string path)
-        {
-            return Task.Run(() => GetFileHash(path));
-        }
-
-        public static int Clamp(this int val, int min, int max)
-        {
-            return Math.Max(min, Math.Min(val, max));
-        }
-    }
-
-    public static class Extensions
-    {
-        public static Task ForEachAsync<TSource>(this IEnumerable<TSource> source, Func<TSource, Task> itemProcessor, int max_processes)
-        {
-            var semaphore = new SemaphoreSlim(max_processes, max_processes);
-            return Task.WhenAll(source.Select(x => ProcessItem(x, itemProcessor, semaphore)));
-        }
-
-        private static async Task ProcessItem<TSource>(TSource item, Func<TSource, Task> itemProcessor, SemaphoreSlim semaphore)
-        {
-            await semaphore.WaitAsync();
-            try
-            {
-                await itemProcessor(item);
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        }
-
-        public static Task<TResult[]> ForEachAsync<TSource, TResult>(
-            this IEnumerable<TSource> source, 
-            Func<TSource, Task<TResult>> itemProcessor, 
-            int max_processes)
-        {
-            var semaphore = new SemaphoreSlim(max_processes, max_processes);
-            return Task.WhenAll(source.Select(x => ProcessItem(x, itemProcessor, semaphore)));
-        }
-
-        private static async Task<TResult> ProcessItem<TSource, TResult>(
-            TSource item, 
-            Func<TSource, Task<TResult>> itemProcessor, 
-            SemaphoreSlim semaphore)
-        {
-            await semaphore.WaitAsync();
-            try
-            {
-                return await itemProcessor(item);
-            }
-            finally
-            {
-                semaphore.Release();
             }
         }
     }

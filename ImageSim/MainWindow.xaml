@@ -47,7 +47,7 @@
             <ListBox ItemsSource="{Binding LocatedFiles}" IsSynchronizedWithCurrentItem="True" 
                      SelectedItem="{Binding SelectedFile, Mode=OneWayToSource}">
                 <ListBox.ItemTemplate>
-                    <DataTemplate DataType="{x:Type vm:ImageFileVM}">
+                    <DataTemplate DataType="{x:Type vm:GenericFileVM}">
                         <TextBlock Text="{Binding FilePath}"/>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -56,9 +56,33 @@
                     VerticalAlignment="Stretch" Background="{x:Static SystemColors.ActiveBorderBrush}"/>
             <TabControl Grid.Column="2" TabStripPlacement="Top" ItemsSource="{Binding Tabs}" SelectedIndex="1">
                 <TabControl.Resources>
+                    <DataTemplate DataType="{x:Type vm:EmptyDetailsVM}">
+                        <Grid>
+                            <TextBlock Text="No file selected"/>
+                        </Grid>
+                    </DataTemplate>
+
+                    <DataTemplate DataType="{x:Type vm:FileDetailsVM}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <TextBlock Grid.Row="0" Text="{Binding FilePath, StringFormat='Path: {0}'}"/>
+                            <TextBlock Grid.Row="1" Text="{Binding Hash, StringFormat='Hash: {0}'}"/>
+                            <TextBlock Grid.Row="2" Text="{Binding FileSize, StringFormat='File size: {0}', 
+                                Converter={conv:FileSizeFormatConverter}}"/>
+                        </Grid>
+                    </DataTemplate>
+                    
                     <DataTemplate DataType="{x:Type vm:ImageDetailsVM}">
                         <Grid>
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
@@ -67,14 +91,18 @@
 
                             <TextBlock Grid.Row="0" Text="{Binding FilePath, StringFormat='Path: {0}'}"/>
                             <TextBlock Grid.Row="1" Text="{Binding Hash, StringFormat='Hash: {0}'}"/>
-                            <TextBlock Grid.Row="2">
+                            <TextBlock Grid.Row="2" Text="{Binding FileSize, StringFormat='File size: {0}', 
+                                Converter={conv:FileSizeFormatConverter}}"/>
+                            <TextBlock Grid.Row="3" Text="{Binding Format, StringFormat='Format: {0}'}"/>
+                            <TextBlock Grid.Row="4">
                                 <Run Text="Size: "/>
                                 <Run Text="{Binding Width}"/>
                                 <Run Text="x"/>
                                 <Run Text="{Binding Height}"/>
                             </TextBlock>
-                            <Image x:Name="image" Grid.Row="3" Source="{Binding FilePath, Converter={StaticResource frameConv}}" Stretch="Uniform"/>
-                            <Border x:Name="error" Grid.Row="3" Margin="10" BorderBrush="Red" BorderThickness="2" Visibility="Collapsed">
+                            <Image x:Name="image" Grid.Row="5" Source="{Binding FilePath, Converter={StaticResource frameConv}}" 
+                                   Stretch="Uniform"/>
+                            <Border x:Name="error" Grid.Row="5" Margin="10" BorderBrush="Red" BorderThickness="2" Visibility="Collapsed">
                                 <TextBlock Text="Can't create preview" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                         </Grid>
@@ -102,7 +130,7 @@
 
                             <ContentControl Content="{Binding CurrentConflict}">
                                 <ContentControl.Resources>
-                                    <DataTemplate DataType="{x:Type vm:ImageGroupVM}">
+                                    <DataTemplate DataType="{x:Type vm:FileGroupVM}">
                                         <Grid>
                                             <Grid.InputBindings>
                                                 <KeyBinding Key="Delete" Command="{Binding Files/DeleteCommand}"/>
