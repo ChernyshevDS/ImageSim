@@ -154,7 +154,7 @@ namespace ImageSim.ViewModels
         {
             var result = ProgressWindow.RunTaskAsync(RunFilesHashingAsync, "Hashing...", true);
 
-            if (!result.Result.IsCompleted)
+            if (result.IsCancelled)
             {
                 var doContinue = MessageBox.Show("Hashing cancelled. Try to find similar files anyway?", "Warning", 
                     MessageBoxButton.YesNo, MessageBoxImage.Question);
@@ -182,10 +182,21 @@ namespace ImageSim.ViewModels
             this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = coll });
         }
 
-        /*private async Task<ParallelLoopResult> Dummy(IProgress<ProgressArgs> progress, CancellationToken token)
+        /*private async Task<int> DummyAsync(IProgress<ProgressArgs> progress, CancellationToken token)
         {
-            await Task.Delay(5000, token);
-            return new ParallelLoopResult();
+            const int total = 100;
+            var items = Enumerable.Range(1, total).ToList();
+            
+            int processed = 0;
+
+            var result = await items.ForEachAsync(async (idx, lt) => {
+                await Task.Delay(1000, token);
+                System.Diagnostics.Debug.WriteLine(idx);
+                var proc = Interlocked.Increment(ref processed);
+                progress.Report(new ProgressArgs($"Proc {idx} of {total}", 100.0 * proc / total));
+                return idx;
+            }, token, 10);
+            return result.Sum();
         }*/
 
         private async Task<int> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
@@ -193,7 +204,7 @@ namespace ImageSim.ViewModels
             int processed = 0;
             var total = LocatedFiles.Count;
 
-            await Extensions.ForEachAsync(LocatedFiles, async (x, state) =>
+            var results = await Extensions.ForEachAsync(LocatedFiles, async (x) =>
             {
                 if (string.IsNullOrEmpty(x.Hash))
                 {
@@ -215,7 +226,7 @@ namespace ImageSim.ViewModels
                             }
                             else    //no cached Hash
                             {
-                                x.Hash = Utils.GetFileHash(x.FilePath);
+                                x.Hash = await Utils.GetFileHashAsync(x.FilePath);
                                 System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(x.FilePath)}: no cached hash, calculated");
                                 needCacheUpdate = true;
                             }
@@ -223,7 +234,7 @@ namespace ImageSim.ViewModels
                         else    //cached value expired
                         {
                             await FileStorage.RemoveFileRecordAsync(x.FilePath);
-                            x.Hash = Utils.GetFileHash(x.FilePath);
+                            x.Hash = await Utils.GetFileHashAsync(x.FilePath);
                             System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(x.FilePath)}: file modified, hash calculated");
                             needCacheUpdate = true;
                         }
@@ -240,9 +251,9 @@ namespace ImageSim.ViewModels
                 var proc = Interlocked.Increment(ref processed);
                 progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
                 return true;
-            }, token, 4);
+            }, 4);
 
-            return new OperationResult<int>()
+            return results.Count(x => x);
         }
     }
 
@@ -481,10 +492,16 @@ namespace ImageSim.ViewModels
     {
         public static string GetFileHash(string path)
         {
+            Thread.Sleep(1000);
             using var fs = File.OpenRead(path);
             var alg = System.Security.Cryptography.MD5.Create();
             var hash = alg.ComputeHash(fs);
             return BitConverter.ToString(hash).Replace("-", string.Empty).ToUpperInvariant();
+        }
+
+        public static Task<string> GetFileHashAsync(string path)
+        {
+            return Task.Run(() => GetFileHash(path));
         }
 
         public static int Clamp(this int val, int min, int max)
@@ -495,33 +512,6 @@ namespace ImageSim.ViewModels
 
     public static class Extensions
     {
-        /*public static Task ForEachAsync<TSource, TResult>(
-            this IEnumerable<TSource> source,
-            Func<TSource, Task<TResult>> taskSelector, Action<TSource, TResult> resultProcessor)
-        {
-            var oneAtATime = new SemaphoreSlim(5, 10);
-            return Task.WhenAll(
-                from item in source
-                select ProcessAsync(item, taskSelector, resultProcessor, oneAtATime));
-        }
-
-        private static async Task ProcessAsync<TSource, TResult>(
-            TSource item,
-            Func<TSource, Task<TResult>> taskSelector, Action<TSource, TResult> resultProcessor,
-            SemaphoreSlim oneAtATime)
-        {
-            await oneAtATime.WaitAsync();
-            TResult result = await taskSelector(item);
-            try
-            {
-                resultProcessor(item, result);
-            }
-            finally
-            {
-                oneAtATime.Release();
-            }
-        }*/
-
         public static Task ForEachAsync<TSource>(this IEnumerable<TSource> source, Func<TSource, Task> itemProcessor, int max_processes)
         {
             var semaphore = new SemaphoreSlim(max_processes, max_processes);
@@ -543,24 +533,22 @@ namespace ImageSim.ViewModels
 
         public static Task<TResult[]> ForEachAsync<TSource, TResult>(
             this IEnumerable<TSource> source, 
-            Func<TSource, CancellationToken, Task<TResult>> itemProcessor, 
-            CancellationToken token,
+            Func<TSource, Task<TResult>> itemProcessor, 
             int max_processes)
         {
             var semaphore = new SemaphoreSlim(max_processes, max_processes);
-            return Task.WhenAll(source.Select(x => ProcessItem(x, itemProcessor, token, semaphore)));
+            return Task.WhenAll(source.Select(x => ProcessItem(x, itemProcessor, semaphore)));
         }
 
         private static async Task<TResult> ProcessItem<TSource, TResult>(
             TSource item, 
-            Func<TSource, CancellationToken, Task<TResult>> itemProcessor, 
-            CancellationToken token,
+            Func<TSource, Task<TResult>> itemProcessor, 
             SemaphoreSlim semaphore)
         {
             await semaphore.WaitAsync();
             try
             {
-                return await itemProcessor(item, token);
+                return await itemProcessor(item);
             }
             finally
             {
