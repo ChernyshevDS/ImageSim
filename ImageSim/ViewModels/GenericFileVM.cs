@@ -18,7 +18,7 @@ namespace ImageSim.ViewModels
 
         private void HandleDelete()
         {
-            Messenger.Default.Send(new FileDeletingMessage(this));
+            Messenger.Default.Send(new FileDeletingMessage(FilePath));
         }
     }
 }

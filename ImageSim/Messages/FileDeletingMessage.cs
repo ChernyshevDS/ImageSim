@@ -5,11 +5,11 @@ namespace ImageSim.Messages
 {
     public class FileDeletingMessage : MessageBase
     {
-        public FileDeletingMessage(GenericFileVM vm)
+        public FileDeletingMessage(string path)
         {
-            File = vm;
+            FilePath = path;
         }
 
-        public GenericFileVM File { get; }
+        public string FilePath { get; }
     }
 }

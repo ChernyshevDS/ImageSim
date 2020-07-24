@@ -7,7 +7,6 @@ using ImageSim.Services.Storage;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
@@ -15,6 +14,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 
 namespace ImageSim.ViewModels
@@ -29,6 +29,7 @@ namespace ImageSim.ViewModels
         private RelayCommand cancelFileSearchCmd;
         private RelayCommand compareHashesCommand;
         private RelayCommand clearCacheCmd;
+        private RelayCommand syncCacheCmd;
         private bool isFileSearchInProgress = false;
         private CancellationTokenSource cancellationSource;
         private GenericFileVM selectedFile;
@@ -39,6 +40,7 @@ namespace ImageSim.ViewModels
 
         public RelayCommand CompareHashesCommand => compareHashesCommand ??= new RelayCommand(HandleCompareHashes);
         public RelayCommand ClearCacheCommand => clearCacheCmd ??= new RelayCommand(async () => await FileStorage.Invalidate());
+        public RelayCommand SyncCacheCommand => syncCacheCmd ??= new RelayCommand(HandleSyncCache);
 
         public bool IsFileSearchInProgress { get => isFileSearchInProgress; set => Set(ref isFileSearchInProgress, value); }
         public ObservableCollection<GenericFileVM> LocatedFiles { get; }
@@ -89,18 +91,19 @@ namespace ImageSim.ViewModels
                 }
                 else 
                 {
-                    detailsTab.ContentVM = GetDetailsVMByFileExtension(x.File);
+                    detailsTab.ContentVM = VMHelper.GetDetailsVMByFileExtension(x.File);
                 }
             }, true);
 
-            Messenger.Default.Register<FileDeletingMessage>(this, x => {
-                var idx = LocatedFiles.IndexOf(x.File);
-                LocatedFiles.Remove(x.File);
-                idx = idx.Clamp(0, LocatedFiles.Count - 1);
-                SelectedFile = LocatedFiles[idx];
+            Messenger.Default.Register<FileDeletingMessage>(this, msg => {
                 try
                 {
-                    File.Delete(x.File.FilePath);
+                    var fvm = LocatedFiles.SingleOrDefault(x => x.FilePath == msg.FilePath);
+                    var idx = LocatedFiles.IndexOf(fvm);
+                    LocatedFiles.Remove(fvm);
+                    idx = idx.Clamp(0, LocatedFiles.Count - 1);
+                    SelectedFile = LocatedFiles[idx];
+                    File.Delete(msg.FilePath);
                 }
                 catch (IOException ex)
                 {
@@ -123,25 +126,6 @@ namespace ImageSim.ViewModels
 
                 Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new ConflictCollectionVM() });
             }
-        }
-
-        private static readonly HashSet<string> image_extensions = new HashSet<string>() 
-        { 
-            "JPG", "JPEG", "TIFF", "GIF", "PNG", "BMP", "EMF", "EXIF", "ICO", "WMF"
-        };
-        private static bool IsImageExtension(string ext)
-        {
-            return image_extensions.Contains(ext.ToUpperInvariant());
-        }
-
-        private static ViewModelBase GetDetailsVMByFileExtension(GenericFileVM vm)
-        {
-            var ext = Path.GetExtension(vm.FilePath);
-            ext = ext.TrimStart('.');
-            if (IsImageExtension(ext))
-                return new ImageDetailsVM(vm);
-            else
-                return new FileDetailsVM(vm);
         }
 
         private void HandleSetWorkingFolder()
@@ -217,6 +201,38 @@ namespace ImageSim.ViewModels
             this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = coll });
         }
 
+        private void HandleSyncCache()
+        {
+            var removed = ProgressWindow.RunTaskAsync(async (progress, token) => {
+                progress.Report(new ProgressArgs("Searching orphaned cache records...", null));
+                var currentFolder = LocatedFiles.Select(x => x.FilePath).ToHashSet();
+                var cached = FileStorage.GetAllKeys();
+
+                var removedCnt = 0;
+                foreach (var path in cached)
+                {
+                    if (currentFolder.Contains(path))
+                    {
+                        var record = await FileStorage.GetFileRecordAsync(path);
+                        var realTime = PersistentFileRecord.ReadModificationTime(path);
+                        if (record.Modified != realTime)
+                        {
+                            await FileStorage.RemoveFileRecordAsync(path);
+                            progress.Report(new ProgressArgs($"Removed {++removedCnt} records", null));
+                        }
+                    }
+                    else 
+                    {
+                        await FileStorage.RemoveFileRecordAsync(path);
+                        progress.Report(new ProgressArgs($"Removed {++removedCnt} records", null));
+                    }
+                }
+
+                return removedCnt;
+            }, "Synchronizing cache...");
+            MessageBox.Show($"Removed {removed.Result} orphaned and outdated cache records");
+        }
+
         private async Task<int> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
         {
             int processed = 0;
@@ -275,6 +291,29 @@ namespace ImageSim.ViewModels
         }
     }
 
+    public static class VMHelper
+    {
+        private static readonly HashSet<string> image_extensions = new HashSet<string>()
+        {
+            "JPG", "JPEG", "TIFF", "GIF", "PNG", "BMP", "EMF", "EXIF", "ICO", "WMF"
+        };
+
+        public static bool IsImageExtension(string ext)
+        {
+            return image_extensions.Contains(ext.ToUpperInvariant());
+        }
+
+        public static FileDetailsVM GetDetailsVMByFileExtension(GenericFileVM vm)
+        {
+            var ext = Path.GetExtension(vm.FilePath);
+            ext = ext.TrimStart('.');
+            if (IsImageExtension(ext))
+                return new ImageDetailsVM(vm);
+            else
+                return new FileDetailsVM(vm);
+        }
+    }
+
     public class EmptyDetailsVM : ViewModelBase
     {
     }
@@ -284,10 +323,18 @@ namespace ImageSim.ViewModels
         private string filePath;
         private string hash;
         private long fileSize;
+        private RelayCommand deleteCommand;
 
         public string FilePath { get => filePath; set => Set(ref filePath, value); }
         public string Hash { get => hash; set => Set(ref hash, value); }
         public long FileSize { get => fileSize; set => Set(ref fileSize, value); }
+
+        public RelayCommand DeleteCommand => deleteCommand ??= new RelayCommand(HandleDelete);
+
+        private void HandleDelete()
+        {
+            Messenger.Default.Send(new FileDeletingMessage(FilePath));
+        }
 
         public FileDetailsVM(GenericFileVM file)
         {
@@ -333,111 +380,21 @@ namespace ImageSim.ViewModels
 
     public class FileGroupVM : ViewModelBase
     { 
-        public ObservableCollection<GenericFileVM> Files { get; }
+        public ObservableCollection<FileDetailsVM> Files { get; }
 
         public FileGroupVM(IEnumerable<GenericFileVM> conflictingFiles)
         {
-            Files = new ObservableCollection<GenericFileVM>();
+            Files = new ObservableCollection<FileDetailsVM>();
             foreach (var item in conflictingFiles)
             {
-                Files.Add(item);
+                var details = VMHelper.GetDetailsVMByFileExtension(item);
+                Files.Add(details);
             }
 
-            Messenger.Default.Register<FileDeletingMessage>(this, x => {
-                Files.Remove(x.File);
+            Messenger.Default.Register<FileDeletingMessage>(this, msg => {
+                var toRemove = Files.SingleOrDefault(z => z.FilePath == msg.FilePath);
+                Files.Remove(toRemove);
             });
-        }
-    }
-
-    public class ConflictCollectionVM : ViewModelBase
-    {
-        private RelayCommand previousConflictCommand;
-        private RelayCommand nextConflictCommand;
-        private FileGroupVM currentConflict;
-
-        public ObservableCollection<FileGroupVM> Conflicts { get; }
-
-        public FileGroupVM CurrentConflict
-        {
-            get => currentConflict;
-            set
-            {
-                if (Set(ref currentConflict, value))
-                {
-                    NextConflictCommand.RaiseCanExecuteChanged();
-                    PreviousConflictCommand.RaiseCanExecuteChanged();
-                    RaisePropertyChanged(nameof(CurrentIndex));
-                }
-            }
-        }
-        public int CurrentIndex => Conflicts.IndexOf(CurrentConflict);
-
-        public RelayCommand NextConflictCommand => nextConflictCommand ??= new RelayCommand(HandleNext, CanGoNext);
-
-        private void HandleNext()
-        {
-            if(CanGoNext())
-                CurrentConflict = Conflicts[CurrentIndex + 1];
-        }
-
-        private bool CanGoNext()
-        {
-            return CurrentIndex >= 0 && CurrentIndex < Conflicts.Count - 1;
-        }
-
-        public RelayCommand PreviousConflictCommand => previousConflictCommand ??= new RelayCommand(HandlePrevious, CanGoBack);
-
-        private void HandlePrevious()
-        {
-            if(CanGoBack())
-                CurrentConflict = Conflicts[CurrentIndex - 1];
-        }
-
-        private bool CanGoBack()
-        {
-            return CurrentIndex > 0;
-        }
-
-        public ConflictCollectionVM()
-        {
-            Conflicts = new ObservableCollection<FileGroupVM>();
-            Conflicts.CollectionChanged += Conflicts_CollectionChanged;
-
-            if (IsInDesignMode)
-            {
-                Conflicts.Add(new FileGroupVM(new GenericFileVM[] { new GenericFileVM(), new GenericFileVM() }));
-                Conflicts.Add(new FileGroupVM(new GenericFileVM[] { new GenericFileVM(), new GenericFileVM() }));
-            }
-        }
-
-        private void Conflicts_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
-        {
-            var oldItem = e.OldItems?.OfType<FileGroupVM>().FirstOrDefault();
-            var newItem = e.NewItems?.OfType<FileGroupVM>().FirstOrDefault();
-
-            switch (e.Action)
-            {
-                case NotifyCollectionChangedAction.Add:
-                    if (CurrentConflict == null)
-                    {
-                        CurrentConflict = Conflicts.First();
-                    }
-                    break;
-                case NotifyCollectionChangedAction.Remove:
-                case NotifyCollectionChangedAction.Replace:
-                    if (oldItem == CurrentConflict)
-                    {
-                        CurrentConflict = newItem;
-                    }
-                    break;
-                case NotifyCollectionChangedAction.Move:
-                    break;
-                case NotifyCollectionChangedAction.Reset:
-                    CurrentConflict = null;
-                    break;
-                default:
-                    break;
-            }
         }
     }
 }
