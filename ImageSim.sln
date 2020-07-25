@@ -5,7 +5,9 @@ VisualStudioVersion = 16.0.30225.117
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ImageSim", "ImageSim\ImageSim.csproj", "{8C132402-76CB-4B65-AC97-DB92C221EA99}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PHash", "PHash\PHash.csproj", "{F1FF07ED-C09B-450B-A696-FA7085F21A2D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PHash", "PHash\PHash.csproj", "{F1FF07ED-C09B-450B-A696-FA7085F21A2D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{16A5CBD7-5F0B-49DD-8DBF-C3A0A580C7F6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{F1FF07ED-C09B-450B-A696-FA7085F21A2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F1FF07ED-C09B-450B-A696-FA7085F21A2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F1FF07ED-C09B-450B-A696-FA7085F21A2D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{16A5CBD7-5F0B-49DD-8DBF-C3A0A580C7F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16A5CBD7-5F0B-49DD-8DBF-C3A0A580C7F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16A5CBD7-5F0B-49DD-8DBF-C3A0A580C7F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16A5CBD7-5F0B-49DD-8DBF-C3A0A580C7F6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
