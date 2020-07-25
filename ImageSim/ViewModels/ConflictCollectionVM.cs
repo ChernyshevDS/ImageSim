@@ -1,5 +1,7 @@
 ﻿using GalaSoft.MvvmLight;
 using GalaSoft.MvvmLight.Command;
+using GalaSoft.MvvmLight.Messaging;
+using ImageSim.Messages;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
@@ -60,6 +62,10 @@ namespace ImageSim.ViewModels
             Conflicts = new ObservableCollection<FileGroupVM>();
             Conflicts.CollectionChanged += Conflicts_CollectionChanged;
 
+            Messenger.Default.Register<ConflictResolvedMessage>(this, msg => {
+                Conflicts.Remove(msg.Conflict);
+            });
+
             if (IsInDesignMode)
             {
                 Conflicts.Add(new FileGroupVM(new GenericFileVM[] { new GenericFileVM(), new GenericFileVM() }));
@@ -77,14 +83,14 @@ namespace ImageSim.ViewModels
                 case NotifyCollectionChangedAction.Add:
                     if (CurrentConflict == null)
                     {
-                        CurrentConflict = Conflicts.First();
+                        CurrentConflict = Conflicts.FirstOrDefault();
                     }
                     break;
                 case NotifyCollectionChangedAction.Remove:
                 case NotifyCollectionChangedAction.Replace:
                     if (oldItem == CurrentConflict)
                     {
-                        CurrentConflict = newItem;
+                        CurrentConflict = newItem ?? Conflicts.FirstOrDefault();
                     }
                     break;
                 case NotifyCollectionChangedAction.Move:

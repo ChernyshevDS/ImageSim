@@ -394,6 +394,11 @@ namespace ImageSim.ViewModels
             Messenger.Default.Register<FileDeletingMessage>(this, msg => {
                 var toRemove = Files.SingleOrDefault(z => z.FilePath == msg.FilePath);
                 Files.Remove(toRemove);
+
+                if (Files.Count <= 1)
+                {
+                    Messenger.Default.Send(new ConflictResolvedMessage(this));
+                }
             });
         }
     }
