@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using OpenCvSharp;
 
+[assembly: InternalsVisibleTo("Tests")]
 namespace PHash
 {
-    public static class PHash
+    public static class DCT
     {
         /*int ph_compare_images(const CImg<uint8_t> &imA,
                                             const CImg<uint8_t> &imB,
@@ -12,7 +14,7 @@ namespace PHash
                                             double gamma = 1.0, int N = 180,
                                             double threshold = 0.90);*/
 
-        private static void print_mat<T>(Mat img) where T : struct
+        /*private static void print_mat<T>(Mat img) where T : struct
         {
             for (int i = 0; i < img.Channels(); ++i)
             {
@@ -24,17 +26,8 @@ namespace PHash
                     var channel_i = channel.Get<T>(0, px);
                     System.Diagnostics.Debug.Write($"{channel_i} ");
                 }
-                /*var channel = img.ExtractChannel(i);
-                for (int y = 0; y < channel.Height; y++)
-                {
-                    for (int x = 0; x < channel.Width; x++)
-                    {
-                        var channel_i = channel.Get<byte>(y, x);
-                        System.Diagnostics.Debug.Write($"{channel_i},");
-                    }
-                }*/
             }
-        }
+        }*/
 
         private static int Clamp(int val, int val_min, int val_max) {
             return val <= val_min 
@@ -71,7 +64,7 @@ namespace PHash
             return result;
         }
 
-        public static int ph_dct_imagehash(string file, ref UInt64 hash)
+        public static UInt64 GetImageHash(string file)
         {
             using var src = new Mat(file, ImreadModes.Color);
 
@@ -89,21 +82,14 @@ namespace PHash
             }
 
             img = img.Resize(new Size(32, 32), 0, 0, InterpolationFlags.Nearest);
-            
             using Mat C = ph_dct_matrix(32);
-        
-            var Ctransp = C.Clone().Transpose();
-        
-            Mat dctImage = C * img * Ctransp;
-            
-            Mat tmp = dctImage.SubMat(1, 9, 1, 9).Clone();
-            
-            Mat subsec = tmp.Reshape(0, 1);
-            print_mat<float>(subsec);
+            using Mat Ctransp = C.Clone().Transpose();
+            using Mat dctImage = C * img * Ctransp;
+            using Mat subsec = dctImage.SubMat(1, 9, 1, 9).Clone().Reshape(0, 1);
 
             float median = get_median(subsec);
             UInt64 one = 0x0000000000000001;
-            hash = 0x0000000000000000;
+            UInt64 hash = 0x0000000000000000;
 
             var subsec_i = subsec.GetGenericIndexer<float>();
             for (int i = 0; i < 64; i++)
@@ -113,7 +99,7 @@ namespace PHash
                 one <<= 1;
             }
 
-            return 0;
+            return hash;
         }
 
         private static float get_median(Mat m)
@@ -127,7 +113,7 @@ namespace PHash
             return (s % 2 != 0) ? res : ((res + Utils.NthOrderStatistic(tmp, (s >> 1) - 1)) / 2f);
         }
 
-        public static Mat ph_dct_matrix(int N) {
+        internal static Mat ph_dct_matrix(int N) {
             var ptr_matrix = new Mat(N, N, MatType.CV_32FC1, new Scalar(1 / Math.Sqrt(N)));
             float c1 = (float)Math.Sqrt(2.0 / N);
 
@@ -140,7 +126,7 @@ namespace PHash
             return ptr_matrix;
         }
 
-        public static int ph_hamming_distance(UInt64 hash1, UInt64 hash2)
+        public static int HammingDistance(UInt64 hash1, UInt64 hash2)
         {
             UInt64 x = hash1 ^ hash2;
             const UInt64 m1 = 0x5555555555555555UL;
@@ -165,7 +151,7 @@ namespace PHash
         }*/
 
         //double ph_hammingdistance2(byte[] hashA, int lenA, byte[] hashB, int lenB)
-        public static double ph_hammingdistance2(byte[] hashA, byte[] hashB)
+        public static double HammingDistance2(byte[] hashA, byte[] hashB)
         {
             int lenA = hashA.Length;
             int lenB = hashB.Length;
@@ -188,7 +174,7 @@ namespace PHash
             return dist / bits;
         }
 
-        public static int ph_bitcount8(byte val)
+        private static int ph_bitcount8(byte val)
         {
             int num = 0;
             while (val != 0)

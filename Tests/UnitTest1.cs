@@ -24,7 +24,7 @@ namespace Tests
                 {
                     var hash1 = hashes[i];
                     var hash2 = hashes[j];
-                    var dist = PHash.PHash.ph_hamming_distance(hash1, hash2);
+                    var dist = PHash.DCT.HammingDistance(hash1, hash2);
                     results.Add(dist);
                 }
             }
@@ -37,10 +37,7 @@ namespace Tests
         [Test]
         public void Test_ph_dct_imagehash()
         {
-            ulong hash = 0;
-            var result = PHash.PHash.ph_dct_imagehash("architecture_2.bmp", ref hash);
-
-            Assert.AreEqual(0, result);
+            var hash = PHash.DCT.GetImageHash("architecture_2.bmp");
             Assert.AreEqual(12354563954307271508UL, hash);
         }
 
@@ -82,7 +79,7 @@ namespace Tests
                 0.351851f,-0.338329f,0.311806f,-0.273300f,0.224292f,-0.166664f,0.102631f,-0.034654f
             };
 
-            var M = PHash.PHash.ph_dct_matrix(16);
+            var M = PHash.DCT.ph_dct_matrix(16);
             var indexer = M.GetGenericIndexer<float>();
             var pos = 0;
             for (int y = 0; y < M.Height; y++)
