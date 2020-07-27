@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ImageSimCLI": {
+      "commandName": "Project",
+      "commandLineArgs": "inter C:\\Workspace\\images"
+    }
+  }
+}
