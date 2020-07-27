@@ -157,6 +157,7 @@
 
             <MenuItem Header="Tools">
                 <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
+                <MenuItem Header="Find similar images (DCT)" Command="{Binding CheckSimilarDCTCommand}"/>
                 <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"/>
                 <MenuItem Header="Sync cache" Command="{Binding SyncCacheCommand}"/>
             </MenuItem>

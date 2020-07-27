@@ -13,4 +13,8 @@
     <PackageReference Include="OpenCvSharp4.Windows" Version="4.3.0.20200701" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\PHash\PHash.csproj" />
+  </ItemGroup>
+
 </Project>
