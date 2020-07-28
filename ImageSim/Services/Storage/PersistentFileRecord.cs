@@ -34,6 +34,11 @@ namespace ImageSim.Services.Storage
             }
         }
 
+        public void RemoveData(string key)
+        {
+            Data?.Remove(key);
+        }
+
         public void SetData<T>(T data) where T : IFileRecordData
         {
             if (Data == null)

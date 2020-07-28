@@ -64,9 +64,30 @@ namespace PHash
             return result;
         }
 
-        public static UInt64 GetImageHash(string file)
+        public static UInt64 GetImageHash(string file, Size clampTo)
         {
-            using var src = new Mat(file, ImreadModes.Color);
+            using var fs = new System.IO.FileStream(file, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+            using var src = Mat.FromStream(fs, ImreadModes.Color);
+            
+            if (src == null)
+                return 0;
+
+            if (clampTo.Width != 0 && clampTo.Height != 0)
+            {
+                if (src.Width > clampTo.Width || src.Height > clampTo.Height)
+                {
+                    var clamp_asp = (double)clampTo.Width / clampTo.Height;
+                    var inp_asp = (double)src.Width / src.Height;
+                    var factor = inp_asp > clamp_asp 
+                        ? (double)clampTo.Width / src.Width 
+                        : (double)clampTo.Height / src.Height;
+                    
+                    Cv2.Resize(src, src, Size.Zero, factor, factor, InterpolationFlags.Linear);
+                }
+            }
+
+            if (src.Width == 0)
+                return 0;
 
             Mat img = null;
             if (src.Channels() >= 3)
@@ -75,7 +96,7 @@ namespace PHash
                 img = new Mat(chan0.Size(), MatType.CV_32FC1);
                 Cv2.BoxFilter(chan0, img, MatType.CV_32FC1, new Size(7, 7), null, normalize: false, BorderTypes.Replicate);
             }
-            else if (img.Channels() == 1)
+            else if (src.Channels() == 1)
             {
                 img = new Mat(src.Size(), MatType.CV_32FC1);
                 Cv2.BoxFilter(src, img, MatType.CV_32FC1, new Size(7, 7), null, normalize: false, BorderTypes.Replicate);

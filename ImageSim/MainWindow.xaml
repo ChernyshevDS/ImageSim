@@ -79,6 +79,7 @@
                 <Grid.InputBindings>
                     <KeyBinding Key="B" Command="{Binding PreviousConflictCommand}"/>
                     <KeyBinding Key="N" Command="{Binding NextConflictCommand}"/>
+                    <KeyBinding Key="S" Command="{Binding ResolveConflictCommand}"/>
                 </Grid.InputBindings>
 
                 <Grid.RowDefinitions>
@@ -127,12 +128,14 @@
                     </Grid.ColumnDefinitions>
 
                     <Button Content="Back" Command="{Binding PreviousConflictCommand}"/>
-                    <TextBlock Grid.Column="1" Margin="10,0,10,0">
-                                    <Run Text="Conflict "/>
-                                    <Run Text="{Binding CurrentIndex, Mode=OneWay, Converter={StaticResource offsetConv}, ConverterParameter=1}"/>
-                                    <Run Text=" of "/>
-                                    <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
-                    </TextBlock>
+                    <Button Grid.Column="1" Margin="10,0,10,0" Command="{Binding ResolveConflictCommand}">
+                        <TextBlock>
+                            <Run Text="Conflict "/>
+                            <Run Text="{Binding CurrentIndex, Mode=OneWay, Converter={StaticResource offsetConv}, ConverterParameter=1}"/>
+                            <Run Text=" of "/>
+                            <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
+                        </TextBlock>
+                    </Button>
                     <Button Grid.Column="2" Content="Next" Command="{Binding NextConflictCommand}"/>
                 </Grid>
             </Grid>

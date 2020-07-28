@@ -227,12 +227,12 @@ namespace ImageSim.ViewModels
                     if (cachedRecord.TryGetData<T>(key, out T data))   //success - use cached value
                     {
                         filedata = data;
-                        System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: loaded from cache");
+                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: loaded from cache");
                     }
                     else    //no cached Hash
                     {
                         filedata = generator(path);
-                        System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: no cached hash, calculated");
+                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: no cached hash, calculated");
                         needCacheUpdate = true;
                     }
                 }
@@ -240,7 +240,7 @@ namespace ImageSim.ViewModels
                 {
                     await FileStorage.RemoveFileRecordAsync(path);
                     filedata = generator(path);
-                    System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: file modified, hash calculated");
+                    //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: file modified, hash calculated");
                     needCacheUpdate = true;
                 }
             } // else current file can't be read - skip
@@ -259,6 +259,7 @@ namespace ImageSim.ViewModels
         {
             int processed = 0;
             var total = LocatedFiles.Count;
+            var maxSize = new OpenCvSharp.Size(512, 512);
 
             var dict = new ConcurrentDictionary<GenericFileVM, ulong>(4, total);
             var results = await TaskExtensions.ForEachAsync(LocatedFiles, async (x) =>
@@ -266,7 +267,8 @@ namespace ImageSim.ViewModels
                 if (!VMHelper.IsImageExtension(Path.GetExtension(x.FilePath)))
                     return false;
 
-                var data = await GetOrCreateAssociatedFileData(x.FilePath, p => new DCTImageHashData() { Hash = PHash.DCT.GetImageHash(p) });
+                var data = await GetOrCreateAssociatedFileData(x.FilePath, 
+                    p => new DCTImageHashData() { Hash = PHash.DCT.GetImageHash(p, maxSize) });
                 dict.TryAdd(x, data.Hash);
 
                 var proc = Interlocked.Increment(ref processed);
@@ -356,7 +358,7 @@ namespace ImageSim.ViewModels
     {
         private static readonly HashSet<string> image_extensions = new HashSet<string>()
         {
-            "JPG", "JPEG", "TIFF", "GIF", "PNG", "BMP", "EMF", "EXIF", "ICO", "WMF"
+            "JPG", "JPEG", "TIFF", "PNG", "BMP", "EMF", "EXIF", "ICO", "WMF"
         };
 
         public static bool IsImageExtension(string ext)

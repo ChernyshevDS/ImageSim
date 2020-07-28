@@ -141,11 +141,17 @@ namespace ImageSim
                 {
                     var taskResult = await task(pw.Progress, tokenSource.Token);
                     result = new OperationResult<T>(false, taskResult);
-                    pw.OperationFinished = true;
                 }
                 catch (OperationCanceledException)
                 {
                     pw.Progress.Report(new ProgressArgs("Operation cancelled", 100));
+                }
+                catch (Exception other)
+                {
+                    System.Diagnostics.Debug.WriteLine(other.Message);
+                }
+                finally
+                {
                     pw.OperationFinished = true;
                 }
             };

@@ -2,6 +2,7 @@
 using GalaSoft.MvvmLight.Command;
 using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Messages;
+using System;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
@@ -12,6 +13,7 @@ namespace ImageSim.ViewModels
     {
         private RelayCommand previousConflictCommand;
         private RelayCommand nextConflictCommand;
+        private RelayCommand resolveConflictCommand;
         private FileGroupVM currentConflict;
 
         public ObservableCollection<FileGroupVM> Conflicts { get; }
@@ -55,6 +57,13 @@ namespace ImageSim.ViewModels
         private bool CanGoBack()
         {
             return CurrentIndex > 0;
+        }
+
+        public RelayCommand ResolveConflictCommand => resolveConflictCommand ??= new RelayCommand(HandleResolveConflict);
+
+        private void HandleResolveConflict()
+        {
+            Messenger.Default.Send(new ConflictResolvedMessage(CurrentConflict));
         }
 
         public ConflictCollectionVM()
