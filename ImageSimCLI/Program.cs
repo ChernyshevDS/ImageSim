@@ -31,9 +31,10 @@ namespace ImageSimCLI
                 Console.Write($"Calculating hashes: 0 of {paths.Count}");
                 var hashes = new Dictionary<string, ulong>(paths.Count);
                 var index = 0;
+                var clampTo = new OpenCvSharp.Size(512, 512);
                 foreach (var file in paths)
                 {
-                    var hash = PHash.DCT.GetImageHash(file);
+                    var hash = PHash.DCT.GetImageHash(file, clampTo);
                     hashes[file] = hash;
                     Console.CursorLeft = 0;
                     Console.Write($"Calculating hashes: {++index} of {paths.Count}");
@@ -87,9 +88,10 @@ namespace ImageSimCLI
                 Console.Write($"Calculating hashes: 0 of {total}");
                 var hashes = new Dictionary<string, ulong>(total);
                 var index = 0;
+                var clampTo = new OpenCvSharp.Size(512, 512);
                 foreach (var file in files1.Concat(files2))
                 {
-                    var hash = PHash.DCT.GetImageHash(file);
+                    var hash = PHash.DCT.GetImageHash(file, clampTo);
                     hashes[file] = hash;
                     Console.CursorLeft = 0;
                     Console.Write($"Calculating hashes: {++index} of {total}");

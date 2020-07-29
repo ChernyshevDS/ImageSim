@@ -8,6 +8,7 @@ namespace ImageSim.ViewModels
     {
         public static string GetFileHash(string path)
         {
+            System.Threading.Thread.Sleep(300); //FIXME
             using var fs = File.OpenRead(path);
             var alg = System.Security.Cryptography.MD5.Create();
             var hash = alg.ComputeHash(fs);
@@ -22,6 +23,11 @@ namespace ImageSim.ViewModels
         public static int Clamp(this int val, int min, int max)
         {
             return Math.Max(min, Math.Min(val, max));
+        }
+
+        public static int GetRecommendedConcurrencyLevel()
+        {
+            return 4;   //TODO
         }
     }
 }

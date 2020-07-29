@@ -43,7 +43,11 @@ namespace PHash
             return conv.ExtractChannel(0);
         }
 
-        //input - BGR U8, output - Y U8
+        /// <summary>
+        /// original pHash method - RGB to YCbCr (16..235 range), returns Y component
+        /// </summary>
+        /// <param name="src">Input BGR U8 mat</param>
+        /// <returns>output - brightness U8 mat</returns>
         private static Mat GetBrightnessComponent(Mat src)
         {
             var result = new Mat(src.Size(), MatType.CV_8UC1);
@@ -68,7 +72,7 @@ namespace PHash
         {
             using var fs = new System.IO.FileStream(file, System.IO.FileMode.Open, System.IO.FileAccess.Read);
             using var src = Mat.FromStream(fs, ImreadModes.Color);
-            
+
             if (src == null)
                 return 0;
 
@@ -108,7 +112,7 @@ namespace PHash
             using Mat dctImage = C * img * Ctransp;
             using Mat subsec = dctImage.SubMat(1, 9, 1, 9).Clone().Reshape(0, 1);
 
-            float median = get_median(subsec);
+            float median = GetMedianValue(subsec);
             UInt64 one = 0x0000000000000001;
             UInt64 hash = 0x0000000000000000;
 
@@ -123,7 +127,7 @@ namespace PHash
             return hash;
         }
 
-        private static float get_median(Mat m)
+        private static float GetMedianValue(Mat m)
         {
             var s = m.Width;
             var idx = m.GetGenericIndexer<float>();

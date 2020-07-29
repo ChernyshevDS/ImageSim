@@ -7,139 +7,10 @@
         xmlns:vm="clr-namespace:ImageSim.ViewModels"
         xmlns:conv="clr-namespace:ImageSim.Converters"
         mc:Ignorable="d"
-        Title="{Binding WorkingFolder, TargetNullValue='Working folder is empty'}" Height="450" Width="800"
+        Title="ImageSim" Height="450" Width="800"
         DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}">
     <Window.Resources>
-        <conv:BitmapFrameConverter x:Key="frameConv"/>
         <BooleanToVisibilityConverter x:Key="boolToVis"/>
-        <conv:IntOffsetConverter x:Key="offsetConv"/>
-        
-        <DataTemplate DataType="{x:Type vm:EmptyDetailsVM}">
-            <Grid>
-                <TextBlock Text="No file selected"/>
-            </Grid>
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type vm:FileDetailsVM}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Text="{Binding FilePath, StringFormat='Path: {0}'}"/>
-                <TextBlock Grid.Row="1" Text="{Binding Hash, StringFormat='Hash: {0}'}"/>
-                <TextBlock Grid.Row="2" Text="{Binding FileSize, StringFormat='File size: {0}', 
-                                Converter={conv:FileSizeFormatConverter}}"/>
-            </Grid>
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type vm:ImageDetailsVM}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Text="{Binding FilePath, StringFormat='Path: {0}'}"/>
-                <TextBlock Grid.Row="1" Text="{Binding Hash, StringFormat='Hash: {0}'}"/>
-                <TextBlock Grid.Row="2" Text="{Binding FileSize, StringFormat='File size: {0}', 
-                                Converter={conv:FileSizeFormatConverter}}"/>
-                <TextBlock Grid.Row="3" Text="{Binding Format, StringFormat='Format: {0}'}"/>
-                <TextBlock Grid.Row="4">
-                                <Run Text="Size: "/>
-                                <Run Text="{Binding Width}"/>
-                                <Run Text="x"/>
-                                <Run Text="{Binding Height}"/>
-                </TextBlock>
-                <Image x:Name="image" Grid.Row="5" Source="{Binding FilePath, Converter={StaticResource frameConv}}" 
-                                   Stretch="Uniform"/>
-                <Border x:Name="error" Grid.Row="5" Margin="10" BorderBrush="Red" BorderThickness="2" Visibility="Collapsed">
-                    <TextBlock Text="Can't create preview" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-            </Grid>
-
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding IsValid}" Value="False">
-                    <Setter TargetName="image" Property="Source" Value="{x:Null}"/>
-                    <Setter TargetName="image" Property="Visibility" Value="Collapsed"/>
-                    <Setter TargetName="error" Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </DataTemplate.Triggers>
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type vm:ConflictCollectionVM}">
-            <Grid>
-                <Grid.InputBindings>
-                    <KeyBinding Key="B" Command="{Binding PreviousConflictCommand}"/>
-                    <KeyBinding Key="N" Command="{Binding NextConflictCommand}"/>
-                    <KeyBinding Key="S" Command="{Binding ResolveConflictCommand}"/>
-                </Grid.InputBindings>
-
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <ContentControl Content="{Binding CurrentConflict}">
-                    <ContentControl.Resources>
-                        <DataTemplate DataType="{x:Type vm:FileGroupVM}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="2*"/>
-                                </Grid.ColumnDefinitions>
-                                <ListBox ItemsSource="{Binding Files}" IsSynchronizedWithCurrentItem="True">
-                                    <ListBox.InputBindings>
-                                        <KeyBinding Key="Delete" Command="{Binding RelativeSource={RelativeSource FindAncestor, 
-                                            AncestorType=ListBox}, Path=SelectedItem.DeleteCommand}"/>
-                                    </ListBox.InputBindings>
-                                    
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding FilePath}" ToolTip="{Binding FilePath}">
-                                                <TextBlock.ContextMenu>
-                                                    <ContextMenu>
-                                                        <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
-                                                    </ContextMenu>
-                                                </TextBlock.ContextMenu>
-                                            </TextBlock>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-
-                                <ContentControl Grid.Column="1" Content="{Binding Files/}"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ContentControl.Resources>
-                </ContentControl>
-
-                <Grid Grid.Row="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Button Content="Back" Command="{Binding PreviousConflictCommand}"/>
-                    <Button Grid.Column="1" Margin="10,0,10,0" Command="{Binding ResolveConflictCommand}">
-                        <TextBlock>
-                            <Run Text="Conflict "/>
-                            <Run Text="{Binding CurrentIndex, Mode=OneWay, Converter={StaticResource offsetConv}, ConverterParameter=1}"/>
-                            <Run Text=" of "/>
-                            <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
-                        </TextBlock>
-                    </Button>
-                    <Button Grid.Column="2" Content="Next" Command="{Binding NextConflictCommand}"/>
-                </Grid>
-            </Grid>
-        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -151,11 +22,8 @@
 
         <Menu>
             <MenuItem Header="Files">
-                <MenuItem Header="Set working folder" Command="{Binding SetWorkingFolderCommand}"/>
-                <MenuItem Header="Reload files" Command="{Binding ReloadFilesCommand}" 
-                          IsEnabled="{Binding IsFileSearchInProgress, Converter={conv:InverseBooleanConverter}}"/>
-                <MenuItem Header="Cancel search" Command="{Binding CancelFileSearchCommand}" 
-                          IsEnabled="{Binding IsFileSearchInProgress}"/>
+                <MenuItem Header="Add files..." Command="{Binding AddFilesCommand}"/>
+                <MenuItem Header="Add from folder..." Command="{Binding AddFromFolderCommand}"/>
             </MenuItem>
 
             <MenuItem Header="Tools">
@@ -173,18 +41,19 @@
                 <ColumnDefinition Width="2.5*"/>
             </Grid.ColumnDefinitions>
 
-            <ListBox ItemsSource="{Binding LocatedFiles}" IsSynchronizedWithCurrentItem="True" 
-                     SelectedItem="{Binding SelectedFile, Mode=OneWayToSource}">
+            <ListBox Grid.Column="0" ItemsSource="{Binding LocatedFiles}" IsSynchronizedWithCurrentItem="True" 
+                     SelectedItem="{Binding SelectedFile, Mode=OneWayToSource}" MinWidth="200">
                 <ListBox.InputBindings>
-                    <KeyBinding Key="Delete" Command="{Binding SelectedFile.DeleteCommand}"/>
+                    <KeyBinding Key="Delete" Command="{Binding SelectedFile.ExcludeCommand}"/>
                 </ListBox.InputBindings>
 
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:GenericFileVM}">
                         <Border Background="Transparent">
-                            <TextBlock Text="{Binding FilePath}"/>
+                            <TextBlock Text="{Binding FilePath, Converter={conv:FileNameFromPathConverter}}" ToolTip="{Binding FilePath}"/>
                             <Border.ContextMenu>
                                 <ContextMenu>
+                                    <MenuItem Header="Exclude" Command="{Binding ExcludeCommand}"/>
                                     <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
                                 </ContextMenu>
                             </Border.ContextMenu>

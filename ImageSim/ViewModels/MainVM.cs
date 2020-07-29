@@ -4,10 +4,12 @@ using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Messages;
 using ImageSim.Services;
 using ImageSim.Services.Storage;
+using Microsoft.Win32;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
@@ -25,41 +27,27 @@ namespace ImageSim.ViewModels
         private readonly IImageProvider ImageProvider;
         private readonly IFileDataStorage FileStorage;
 
-        private RelayCommand setWorkingFolderCmd;
-        private RelayCommand reloadFilesCmd;
-        private RelayCommand cancelFileSearchCmd;
+        private RelayCommand addFromFolderCmd;
+        private RelayCommand addFilesCmd;
+
         private RelayCommand compareHashesCommand;
         private RelayCommand checkSimilarDCTCmd;
         private RelayCommand clearCacheCmd;
         private RelayCommand syncCacheCmd;
-        private bool isFileSearchInProgress = false;
-        private CancellationTokenSource cancellationSource;
+        
         private GenericFileVM selectedFile;
 
-        public RelayCommand SetWorkingFolderCommand => setWorkingFolderCmd ??= new RelayCommand(HandleSetWorkingFolder);
-        public RelayCommand ReloadFilesCommand => reloadFilesCmd ??= new RelayCommand(async () => await ReloadFiles());
-        public RelayCommand CancelFileSearchCommand => cancelFileSearchCmd ??= new RelayCommand(HandleCancelSearch);
+        public RelayCommand AddFromFolderCommand => addFromFolderCmd ??= new RelayCommand(HandleAddFromFolder);
+        public RelayCommand AddFilesCommand => addFilesCmd ??= new RelayCommand(HandleAddFiles);
 
         public RelayCommand CompareHashesCommand => compareHashesCommand ??= new RelayCommand(HandleCompareHashes);
         public RelayCommand CheckSimilarDCTCommand => checkSimilarDCTCmd ??= new RelayCommand(HandleCompareDCTImageHashes);
         public RelayCommand ClearCacheCommand => clearCacheCmd ??= new RelayCommand(async () => await FileStorage.Invalidate());
         public RelayCommand SyncCacheCommand => syncCacheCmd ??= new RelayCommand(HandleSyncCache);
 
-        public bool IsFileSearchInProgress { get => isFileSearchInProgress; set => Set(ref isFileSearchInProgress, value); }
         public ObservableCollection<GenericFileVM> LocatedFiles { get; }
         public ObservableCollection<TabVM> Tabs { get; }
-        public string WorkingFolder
-        {
-            get => ImageProvider.WorkingFolder;
-            set
-            {
-                if (!EqualityComparer<string>.Default.Equals(ImageProvider.WorkingFolder, value))
-                {
-                    ImageProvider.WorkingFolder = value;
-                    RaisePropertyChanged();
-                }
-            }
-        }
+        
         public GenericFileVM SelectedFile
         {
             get => selectedFile;
@@ -86,27 +74,37 @@ namespace ImageSim.ViewModels
             };
             Tabs = new ObservableCollection<TabVM>() { detailsTab };
 
+            if (IsInDesignMode)
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    LocatedFiles.Add(new GenericFileVM() { FilePath = "File " + (i + 1) });
+                }
+
+                Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new ConflictCollectionVM() });
+                return;
+            }
+
             Messenger.Default.Register<CurrentFileChangedMessage>(this, x =>
             {
-                if (x.File == null)
-                {
-                    detailsTab.ContentVM = new EmptyDetailsVM();
-                }
-                else 
-                {
-                    detailsTab.ContentVM = VMHelper.GetDetailsVMByFileExtension(x.File);
-                }
+                detailsTab.ContentVM = VMHelper.GetDetailsVMByPath(x?.File?.FilePath);
             }, true);
 
-            Messenger.Default.Register<FileDeletingMessage>(this, msg => {
+            Messenger.Default.Register<FileOperationMessage>(this, msg => {
                 try
                 {
-                    var fvm = LocatedFiles.SingleOrDefault(x => x.FilePath == msg.FilePath);
-                    var idx = LocatedFiles.IndexOf(fvm);
-                    LocatedFiles.Remove(fvm);
-                    idx = idx.Clamp(0, LocatedFiles.Count - 1);
-                    SelectedFile = LocatedFiles[idx];
-                    File.Delete(msg.FilePath);
+                    switch (msg.Action)
+                    {
+                        case FileOperation.Exclude:
+                            ExcludeFile(msg.FilePath);
+                            break;
+                        case FileOperation.Delete:
+                            ExcludeFile(msg.FilePath);
+                            File.Delete(msg.FilePath);
+                            break;
+                        default:
+                            break;
+                    }
                 }
                 catch (IOException ex)
                 {
@@ -117,100 +115,99 @@ namespace ImageSim.ViewModels
             Messenger.Default.Register<TabClosingMessage>(this, x => {
                 var tab = x.ClosingTab;
                 Tabs.Remove(tab);
-                GC.Collect();
-            });
-
-            if (IsInDesignMode)
-            {
-                for (int i = 0; i < 10; i++)
-                {
-                    LocatedFiles.Add(new GenericFileVM() { FilePath = "File " + (i + 1), Hash = "ABCDEF" });
-                }
-
-                Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new ConflictCollectionVM() });
-            }
+                GC.Collect();   //FIXME
+            });           
         }
 
-        private void HandleSetWorkingFolder()
+        private void ExcludeFile(string path)
+        {
+            var fvm = LocatedFiles.SingleOrDefault(x => x.FilePath == path);
+            var idx = LocatedFiles.IndexOf(fvm);
+            LocatedFiles.Remove(fvm);
+            idx = idx.Clamp(0, LocatedFiles.Count - 1);
+            SelectedFile = LocatedFiles[idx];
+
+            Messenger.Default.Send(new FileRemovedMessage(path));
+        }
+
+        private void HandleAddFromFolder()
         {
             var dlg = new System.Windows.Forms.FolderBrowserDialog()
             {
                 Description = "Select working folder",
                 ShowNewFolderButton = false
             };
+
             if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
-                WorkingFolder = dlg.SelectedPath;
+                var result = ProgressWindow.RunTaskAsync(async (progress, token) => {
+                    int added = 0;
+                    await foreach (var file in ImageProvider.GetFilesAsync(dlg.SelectedPath, x => true))
+                    {
+                        if (LocatedFiles.Any(x => x.FilePath == file))
+                            continue;
+
+                        LocatedFiles.Add(new GenericFileVM() { FilePath = file });
+                        added++;
+                        progress.Report(new ProgressArgs($"Added {added} files", null));
+                    }
+                    return added;
+                }, "Adding files...", false);
             }
         }
 
-        private async Task ReloadFiles()
+        private void HandleAddFiles()
         {
-            IsFileSearchInProgress = true;
-            cancellationSource = new CancellationTokenSource();
-
-            LocatedFiles.Clear();
-            try
+            var dlg = new OpenFileDialog() { Multiselect = true };
+            if ((bool)dlg.ShowDialog())
             {
-                await foreach (var item in ImageProvider.GetFilesAsync(x => true).WithCancellation(cancellationSource.Token))
+                foreach (var file in dlg.FileNames)
                 {
-                    LocatedFiles.Add(new GenericFileVM() { FilePath = item });
+                    if (LocatedFiles.Any(x => x.FilePath == file))
+                        continue;
+
+                    LocatedFiles.Add(new GenericFileVM() { FilePath = file });
                 }
             }
-            catch (OperationCanceledException)
-            {
-                MessageBox.Show("Operation cancelled");
-            }
-            finally
-            {
-                IsFileSearchInProgress = false;
-            }
-        }
-
-        private void HandleCancelSearch()
-        {
-            cancellationSource?.Cancel();
         }
 
         private void HandleCompareHashes()
         {
-            var result = ProgressWindow.RunTaskAsync(RunFilesHashingAsync, "Hashing...", true);
+            var result = ProgressWindow.RunTaskAsync(
+                async (prog, tok) => await Task.Run(() => RunFilesHashingAsync(prog, tok)),
+                "Hashing...", true);
 
             if (result.IsCancelled)
+                return;
+
+            if (result.Result == null)
             {
-                var doContinue = MessageBox.Show("Hashing cancelled. Try to find similar files anyway?", "Warning", 
-                    MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (doContinue != MessageBoxResult.Yes)
-                    return;
+                MessageBox.Show("No conflicts found!");
+                return;
             }
+            
+            this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = result.Result });
+        }
 
-            var groups = LocatedFiles.Where(x => !string.IsNullOrEmpty(x.Hash))
-                .GroupBy(x => x.Hash)
-                .Where(x => x.Count() > 1)
-                .ToList();
+        private void HandleCompareDCTImageHashes()
+        {
+            var result = ProgressWindow.RunTaskAsync(
+                async (prog, tok) => await Task.Run(() => RunFilesDCTHashingAsync(prog, tok)), 
+                "DCT hashing...", true);
+            
+            if (result.IsCancelled)
+                return;
 
-            if (!groups.Any())
+            if (result.Result == null || result.Result.Conflicts.Count == 0)
             {
                 MessageBox.Show("No conflicts found!");
                 return;
             }
 
-            var coll = new ConflictCollectionVM();
-            foreach (var group in groups)
-            {
-                var conflict = new FileGroupVM(group);
-                coll.Conflicts.Add(conflict);
-            }
-            this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = coll });
-        }
-
-        private void HandleCompareDCTImageHashes()
-        {
-            var result = ProgressWindow.RunTaskAsync(RunFilesDCTHashingAsync, "DCT hashing...", false);
             this.Tabs.Add(new TabVM() { Header = "DCT", ContentVM = result.Result });
         }
 
-        private async Task<T> GetOrCreateAssociatedFileData<T>(string path, Func<string, T> generator) where T : IFileRecordData, new()
+        private async Task<T> GetOrCreateAssociatedFileData<T>(string path, string key, Func<string, T> generator) where T : IFileRecordData, new()
         {
             var needCacheUpdate = false;
             var cachedRecord = await FileStorage.GetFileRecordAsync(path);
@@ -223,7 +220,6 @@ namespace ImageSim.ViewModels
             {
                 if (cachedRecord.Modified == time)   //cached record is valid - file hasn't been changed
                 {
-                    var key = typeof(T).GetProperty("Key").GetValue(null).ToString();
                     if (cachedRecord.TryGetData<T>(key, out T data))   //success - use cached value
                     {
                         filedata = data;
@@ -264,10 +260,12 @@ namespace ImageSim.ViewModels
             var dict = new ConcurrentDictionary<GenericFileVM, ulong>(4, total);
             var results = await TaskExtensions.ForEachAsync(LocatedFiles, async (x) =>
             {
+                token.ThrowIfCancellationRequested();
+
                 if (!VMHelper.IsImageExtension(Path.GetExtension(x.FilePath)))
                     return false;
 
-                var data = await GetOrCreateAssociatedFileData(x.FilePath, 
+                var data = await GetOrCreateAssociatedFileData(x.FilePath, DCTImageHashData.Key,
                     p => new DCTImageHashData() { Hash = PHash.DCT.GetImageHash(p, maxSize) });
                 dict.TryAdd(x, data.Hash);
 
@@ -279,7 +277,6 @@ namespace ImageSim.ViewModels
             var max_similarity = 10;
             progress.Report(new ProgressArgs($"Searching similarities", null));
             var hashes = dict.ToList();
-            var conflict = new List<GenericFileVM>(2) { null, null };
             var cvm = new ConflictCollectionVM();
             for (int i = 0; i < dict.Count - 1; i++)
             {
@@ -290,12 +287,17 @@ namespace ImageSim.ViewModels
                     var distance = PHash.DCT.HammingDistance(left.Value, right.Value);
                     if (distance <= max_similarity)
                     {
-                        conflict[0] = left.Key;
-                        conflict[1] = right.Key;
-                        cvm.Conflicts.Add(new FileGroupVM(conflict));
+                        cvm.Conflicts.Add(new ImageDCTConflictVM() 
+                        { 
+                            FirstImage = (ImageDetailsVM)VMHelper.GetDetailsVMByPath(left.Key.FilePath),
+                            SecondImage = (ImageDetailsVM)VMHelper.GetDetailsVMByPath(right.Key.FilePath)
+                        });
                     }
                 }
             }
+
+            if (cvm.Conflicts.Count == 0)
+                return null;
 
             return cvm;
         }
@@ -332,25 +334,42 @@ namespace ImageSim.ViewModels
             MessageBox.Show($"Removed {removed.Result} orphaned and outdated cache records");
         }
 
-        private async Task<int> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
+        private async Task<ConflictCollectionVM> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
         {
             int processed = 0;
             var total = LocatedFiles.Count;
+            var thread_count = Utils.GetRecommendedConcurrencyLevel();
 
+            var hashDict = new ConcurrentDictionary<string, string>(thread_count, total);
             var results = await TaskExtensions.ForEachAsync(LocatedFiles, async (x) =>
             {
-                if (string.IsNullOrEmpty(x.Hash))
-                {
-                    var data = await GetOrCreateAssociatedFileData(x.FilePath, p => new HashData() { Hash = Utils.GetFileHash(p) });
-                    x.Hash = data.Hash;
-                }
+                token.ThrowIfCancellationRequested();
+
+                var data = await GetOrCreateAssociatedFileData(x.FilePath, HashData.Key,
+                    p => new HashData() { Hash = Utils.GetFileHash(p) });
+                hashDict.TryAdd(x.FilePath, data.Hash);
 
                 var proc = Interlocked.Increment(ref processed);
                 progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
                 return true;
-            }, 4);
+            }, thread_count);
 
-            return results.Count(x => x);
+            var groups = hashDict
+                .GroupBy(x => x.Value)
+                .Where(x => x.Count() > 1)
+                .ToList();
+
+            if (!groups.Any())
+                return null;
+
+            var coll = new ConflictCollectionVM();
+            foreach (var group in groups)
+            {
+                var conflict = HashConflictVM.FromPaths(group.Select(x => x.Key));
+                coll.Conflicts.Add(conflict);
+            }
+
+            return coll;
         }
     }
 
@@ -363,16 +382,20 @@ namespace ImageSim.ViewModels
 
         public static bool IsImageExtension(string ext)
         {
+            if (string.IsNullOrEmpty(ext))
+                return false;
             return image_extensions.Contains(ext.TrimStart('.').ToUpperInvariant());
         }
 
-        public static FileDetailsVM GetDetailsVMByFileExtension(GenericFileVM vm)
+        public static ViewModelBase GetDetailsVMByPath(string path)
         {
-            var ext = Path.GetExtension(vm.FilePath);
+            if (string.IsNullOrEmpty(path))
+                return new EmptyDetailsVM();
+            var ext = Path.GetExtension(path);
             if (IsImageExtension(ext))
-                return new ImageDetailsVM(vm);
+                return new ImageDetailsVM(path);
             else
-                return new FileDetailsVM(vm);
+                return new FileDetailsVM(path);
         }
     }
 
@@ -383,28 +406,23 @@ namespace ImageSim.ViewModels
     public class FileDetailsVM : ViewModelBase
     {
         private string filePath;
-        private string hash;
         private long fileSize;
-        private RelayCommand deleteCommand;
 
         public string FilePath { get => filePath; set => Set(ref filePath, value); }
-        public string Hash { get => hash; set => Set(ref hash, value); }
         public long FileSize { get => fileSize; set => Set(ref fileSize, value); }
 
-        public RelayCommand DeleteCommand => deleteCommand ??= new RelayCommand(HandleDelete);
-
-        private void HandleDelete()
+        public FileDetailsVM(string path)
         {
-            Messenger.Default.Send(new FileDeletingMessage(FilePath));
-        }
-
-        public FileDetailsVM(GenericFileVM file)
-        {
-            FilePath = file.FilePath;
-            Hash = file.Hash;
-
-            FileInfo fi = new FileInfo(FilePath);
-            FileSize = fi.Length;
+            FilePath = path;
+            try
+            {
+                FileInfo fi = new FileInfo(FilePath);
+                FileSize = fi.Length;
+            }
+            catch (Exception)
+            {
+                FileSize = 0;
+            }            
         }
     }
 
@@ -420,7 +438,7 @@ namespace ImageSim.ViewModels
         public string Format { get => format; set => Set(ref format, value); }
         public bool IsValid { get => isValid; set => Set(ref isValid, value); }
 
-        public ImageDetailsVM(GenericFileVM vm) : base(vm)
+        public ImageDetailsVM(string path) : base(path)
         {
             try
             {
@@ -440,28 +458,119 @@ namespace ImageSim.ViewModels
         }
     }
 
-    public class FileGroupVM : ViewModelBase
-    { 
-        public ObservableCollection<FileDetailsVM> Files { get; }
+    public class HashConflictVM : ConflictVM
+    {
+        private ViewModelBase detailsVM;
+        private HashConflictEntryVM selectedFile;
 
-        public FileGroupVM(IEnumerable<GenericFileVM> conflictingFiles)
+        public ViewModelBase DetailsVM { get => detailsVM; set => Set(ref detailsVM, value); }
+        public HashConflictEntryVM SelectedFile
         {
-            Files = new ObservableCollection<FileDetailsVM>();
-            foreach (var item in conflictingFiles)
+            get => selectedFile;
+            set
             {
-                var details = VMHelper.GetDetailsVMByFileExtension(item);
-                Files.Add(details);
-            }
-
-            Messenger.Default.Register<FileDeletingMessage>(this, msg => {
-                var toRemove = Files.SingleOrDefault(z => z.FilePath == msg.FilePath);
-                Files.Remove(toRemove);
-
-                if (Files.Count <= 1)
+                if (Set(ref selectedFile, value))
                 {
-                    Messenger.Default.Send(new ConflictResolvedMessage(this));
+                    DetailsVM = VMHelper.GetDetailsVMByPath(selectedFile?.FilePath);
+                }
+            }
+        }
+
+        public ObservableCollection<HashConflictEntryVM> ConflictingFiles { get; }
+
+        public HashConflictVM()
+        {
+            ConflictingFiles = new ObservableCollection<HashConflictEntryVM>();
+            ConflictingFiles.CollectionChanged += ConflictingFiles_CollectionChanged;
+
+            Messenger.Default.Register<FileRemovedMessage>(this, HandleFileRemoved);
+        }
+
+        private void ConflictingFiles_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            var oldItem = e.OldItems?.OfType<HashConflictEntryVM>().FirstOrDefault();
+            var newItem = e.NewItems?.OfType<HashConflictEntryVM>().FirstOrDefault();
+
+            if (SelectedFile == null || SelectedFile == oldItem)
+            {
+                SelectedFile = newItem ?? ConflictingFiles.FirstOrDefault();
+            }
+        }
+
+        public static HashConflictVM FromPaths(IEnumerable<string> paths)
+        {
+            var vm = new HashConflictVM();
+            foreach (var item in paths)
+            {
+                vm.ConflictingFiles.Add(new HashConflictEntryVM() { FilePath = item });
+            }
+            return vm;
+        }
+
+        private void HandleFileRemoved(FileRemovedMessage obj)
+        {
+            var entry = ConflictingFiles.FirstOrDefault(x => x.FilePath == obj.Path);
+            if (entry != null)
+            {
+                ConflictingFiles.Remove(entry);
+            }
+        }
+    }
+
+    public class HashConflictEntryVM : ViewModelBase
+    {
+        private RelayCommand deleteCommand;
+        private string filePath;
+
+        public RelayCommand DeleteCommand => deleteCommand ??= new RelayCommand(HandleDelete);
+
+        private void HandleDelete()
+        {
+            Messenger.Default.Send(new FileOperationMessage(FilePath, FileOperation.Delete));
+        }
+
+        public string FilePath { get => filePath; set => Set(ref filePath, value); }
+    }
+
+    public class ImageDCTConflictVM : ConflictVM
+    {
+        private RelayCommand<ImageDetailsVM> keepImageCommand;
+        private ImageDetailsVM firstImage;
+        private ImageDetailsVM secondImage;
+
+        public ImageDetailsVM FirstImage { get => firstImage; set => Set(ref firstImage, value); }
+        public ImageDetailsVM SecondImage { get => secondImage; set => Set(ref secondImage, value); }
+        public RelayCommand<ImageDetailsVM> KeepImageCommand => keepImageCommand 
+            ??= new RelayCommand<ImageDetailsVM>(HandleKeepImage);
+
+        public ImageDCTConflictVM()
+        {
+            Messenger.Default.Register<FileRemovedMessage>(this, msg => {
+                if (msg.Path == FirstImage.FilePath || msg.Path == SecondImage.FilePath)
+                {
+                    MarkAsResolved();
                 }
             });
+        }
+
+        private void HandleKeepImage(ImageDetailsVM obj)
+        {
+            var toDelete = obj.FilePath == FirstImage.FilePath 
+                ? SecondImage.FilePath 
+                : FirstImage.FilePath;
+            Messenger.Default.Send(new FileOperationMessage(toDelete, FileOperation.Delete));
+        }
+    }
+
+    public class ConflictVM : ViewModelBase
+    {
+        private RelayCommand markResolvedCmd;
+
+        public RelayCommand ResolveCommand => markResolvedCmd ??= new RelayCommand(MarkAsResolved);
+
+        public void MarkAsResolved()
+        {
+            Messenger.Default.Send(new ConflictResolvedMessage(this));
         }
     }
 }

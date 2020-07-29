@@ -7,7 +7,7 @@ using ImageSim.Services;
 
 namespace ImageSim.ViewModels
 {
-    class ViewModelLocator
+    public class ViewModelLocator
     {
         static ViewModelLocator()
         {

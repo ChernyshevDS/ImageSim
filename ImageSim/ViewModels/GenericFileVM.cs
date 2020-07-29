@@ -2,23 +2,28 @@
 using GalaSoft.MvvmLight.Command;
 using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Messages;
+using System;
 
 namespace ImageSim.ViewModels
 {
     public class GenericFileVM : ObservableObject
     {
-        private RelayCommand deleteCommand;
         private string filePath;
-        private string hash;
-
+        private RelayCommand deleteCmd;
+        private RelayCommand excludeCmd;
+        
         public string FilePath { get => filePath; set => Set(ref filePath, value); }
-        public string Hash { get => hash; set => Set(ref hash, value); }
-
-        public RelayCommand DeleteCommand => deleteCommand ??= new RelayCommand(HandleDelete);
+        public RelayCommand DeleteCommand => deleteCmd ??= new RelayCommand(HandleDelete);
+        public RelayCommand ExcludeCommand => excludeCmd ??= new RelayCommand(HandleExclude);
 
         private void HandleDelete()
         {
-            Messenger.Default.Send(new FileDeletingMessage(FilePath));
+            Messenger.Default.Send(new FileOperationMessage(FilePath, FileOperation.Delete));
+        }
+
+        private void HandleExclude()
+        {
+            Messenger.Default.Send(new FileOperationMessage(FilePath, FileOperation.Exclude));
         }
     }
 }

@@ -10,12 +10,10 @@ namespace ImageSim.Services
 {
     public class FSImageProvider : IImageProvider
     {
-        public string WorkingFolder { get; set; } = string.Empty;
-
-        public async IAsyncEnumerable<string> GetFilesAsync(Predicate<string> filter, 
+        public async IAsyncEnumerable<string> GetFilesAsync(string folder, Predicate<string> filter, 
             [EnumeratorCancellation] CancellationToken token = default)
         {
-            if (!Directory.Exists(WorkingFolder))
+            if (!Directory.Exists(folder))
                 yield break;
 
             var localOpts = new EnumerationOptions()
@@ -27,7 +25,7 @@ namespace ImageSim.Services
                 ReturnSpecialDirectories = false
             };
 
-            var subDirs = Directory.EnumerateDirectories(WorkingFolder);
+            var subDirs = Directory.EnumerateDirectories(folder);
             foreach (var dir in subDirs)
             {
                 var dirFiles = await Task.Run(() => Directory.EnumerateFiles(dir, "*.*", enumOptions).Where(x => filter(x)));
@@ -37,7 +35,7 @@ namespace ImageSim.Services
                 }
             }
 
-            var localFiles = Directory.EnumerateFiles(WorkingFolder, "*.*", localOpts).Where(x => filter(x));
+            var localFiles = Directory.EnumerateFiles(folder, "*", localOpts).Where(x => filter(x));
             foreach (var file in localFiles)
             {
                 yield return file;
@@ -58,7 +56,7 @@ namespace ImageSim.Services
     {
         public string WorkingFolder { get; set; }
 
-        public async IAsyncEnumerable<string> GetFilesAsync(Predicate<string> filter, 
+        public async IAsyncEnumerable<string> GetFilesAsync(string folder, Predicate<string> filter, 
             [EnumeratorCancellation] CancellationToken token = default)
         {
             for (int i = 0; i < 20; i++)

@@ -37,7 +37,7 @@ namespace Tests
         [Test]
         public void Test_ph_dct_imagehash()
         {
-            var hash = PHash.DCT.GetImageHash("architecture_2.bmp");
+            var hash = PHash.DCT.GetImageHash("architecture_2.bmp", OpenCvSharp.Size.Zero);
             Assert.AreEqual(12354563954307271508UL, hash);
         }
 

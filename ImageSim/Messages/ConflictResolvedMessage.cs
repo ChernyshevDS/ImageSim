@@ -5,11 +5,11 @@ namespace ImageSim.Messages
 {
     public class ConflictResolvedMessage : MessageBase
     {
-        public ConflictResolvedMessage(FileGroupVM vm)
+        public ConflictResolvedMessage(ConflictVM vm)
         {
             Conflict = vm;
         }
 
-        public FileGroupVM Conflict { get; }
+        public ConflictVM Conflict { get; }
     }
 }

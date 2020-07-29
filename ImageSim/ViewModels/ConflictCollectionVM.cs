@@ -13,12 +13,11 @@ namespace ImageSim.ViewModels
     {
         private RelayCommand previousConflictCommand;
         private RelayCommand nextConflictCommand;
-        private RelayCommand resolveConflictCommand;
-        private FileGroupVM currentConflict;
+        private ConflictVM currentConflict;
 
-        public ObservableCollection<FileGroupVM> Conflicts { get; }
+        public ObservableCollection<ConflictVM> Conflicts { get; }
 
-        public FileGroupVM CurrentConflict
+        public ConflictVM CurrentConflict
         {
             get => currentConflict;
             set
@@ -59,33 +58,28 @@ namespace ImageSim.ViewModels
             return CurrentIndex > 0;
         }
 
-        public RelayCommand ResolveConflictCommand => resolveConflictCommand ??= new RelayCommand(HandleResolveConflict);
-
-        private void HandleResolveConflict()
-        {
-            Messenger.Default.Send(new ConflictResolvedMessage(CurrentConflict));
-        }
-
         public ConflictCollectionVM()
         {
-            Conflicts = new ObservableCollection<FileGroupVM>();
+            Conflicts = new ObservableCollection<ConflictVM>();
+
+            if (IsInDesignMode)
+            {
+                var conflict = HashConflictVM.FromPaths(new string[] { "File 1", "File 2" });
+                Conflicts.Add(conflict);
+                return;
+            }
+
             Conflicts.CollectionChanged += Conflicts_CollectionChanged;
 
             Messenger.Default.Register<ConflictResolvedMessage>(this, msg => {
                 Conflicts.Remove(msg.Conflict);
             });
-
-            if (IsInDesignMode)
-            {
-                Conflicts.Add(new FileGroupVM(new GenericFileVM[] { new GenericFileVM(), new GenericFileVM() }));
-                Conflicts.Add(new FileGroupVM(new GenericFileVM[] { new GenericFileVM(), new GenericFileVM() }));
-            }
         }
 
         private void Conflicts_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            var oldItem = e.OldItems?.OfType<FileGroupVM>().FirstOrDefault();
-            var newItem = e.NewItems?.OfType<FileGroupVM>().FirstOrDefault();
+            var oldItem = e.OldItems?.OfType<ConflictVM>().FirstOrDefault();
+            var newItem = e.NewItems?.OfType<ConflictVM>().FirstOrDefault();
 
             switch (e.Action)
             {
