@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
 using System.Collections.Generic;
+using OpenCvSharp;
 
 namespace PHash
 {
@@ -71,6 +72,46 @@ namespace PHash
         public static T Median<T>(this IList<T> list) where T : IComparable<T>
         {
             return list.NthOrderStatistic((list.Count - 1) / 2);
+        }
+
+        public static int Clamp(int val, int val_min, int val_max)
+        {
+            return val <= val_min
+                ? val_min
+                : val >= val_max
+                    ? val_max
+                    : val;
+        }
+
+        public static Mat GetBrightnessComponentCV(Mat src)
+        {
+            var conv = src.CvtColor(ColorConversionCodes.BGR2YCrCb);
+            return conv.ExtractChannel(0);
+        }
+
+        /// <summary>
+        /// original pHash method - RGB to YCbCr (16..235 range), returns Y component
+        /// </summary>
+        /// <param name="src">Input BGR U8 mat</param>
+        /// <returns>output - brightness U8 mat</returns>
+        public static Mat GetBrightnessComponent(Mat src)
+        {
+            var result = new Mat(src.Size(), MatType.CV_8UC1);
+            var indexer = src.GetGenericIndexer<Vec3b>();
+            var res_i = result.GetGenericIndexer<byte>();
+            for (int y = 0; y < src.Height; y++)
+            {
+                for (int x = 0; x < src.Width; x++)
+                {
+                    Vec3b color = indexer[y, x];    //BGR
+                    var R = color.Item2;
+                    var G = color.Item1;
+                    var B = color.Item0;
+                    var Y = (66 * R + 129 * G + 25 * B + 128) / 256 + 16;
+                    res_i[y, x] = (byte)Utils.Clamp(Y, 0, 255);
+                }
+            }
+            return result;
         }
     }
 }

@@ -8,12 +8,6 @@ namespace PHash
 {
     public static class DCT
     {
-        /*int ph_compare_images(const CImg<uint8_t> &imA,
-                                            const CImg<uint8_t> &imB,
-                                            double &pcc, double sigma = 3.5,
-                                            double gamma = 1.0, int N = 180,
-                                            double threshold = 0.90);*/
-
         /*private static void print_mat<T>(Mat img) where T : struct
         {
             for (int i = 0; i < img.Channels(); ++i)
@@ -28,45 +22,6 @@ namespace PHash
                 }
             }
         }*/
-
-        private static int Clamp(int val, int val_min, int val_max) {
-            return val <= val_min 
-                ? val_min 
-                : val >= val_max
-                    ? val_max 
-                    : val;
-        }
-
-        private static Mat GetBrightnessComponentCV(Mat src)
-        {
-            var conv = src.CvtColor(ColorConversionCodes.BGR2YCrCb);
-            return conv.ExtractChannel(0);
-        }
-
-        /// <summary>
-        /// original pHash method - RGB to YCbCr (16..235 range), returns Y component
-        /// </summary>
-        /// <param name="src">Input BGR U8 mat</param>
-        /// <returns>output - brightness U8 mat</returns>
-        private static Mat GetBrightnessComponent(Mat src)
-        {
-            var result = new Mat(src.Size(), MatType.CV_8UC1);
-            var indexer = src.GetGenericIndexer<Vec3b>();
-            var res_i = result.GetGenericIndexer<byte>();
-            for (int y = 0; y < src.Height; y++)
-            {
-                for (int x = 0; x < src.Width; x++)
-                {
-                    Vec3b color = indexer[y, x];    //BGR
-                    var R = color.Item2;
-                    var G = color.Item1;
-                    var B = color.Item0;
-                    var Y = (66 * R + 129 * G + 25 * B + 128) / 256 + 16;
-                    res_i[y, x] = (byte)Clamp(Y, 0, 255);
-                }
-            }
-            return result;
-        }
 
         public static UInt64 GetImageHash(string file, Size clampTo)
         {
@@ -96,7 +51,7 @@ namespace PHash
             Mat img = null;
             if (src.Channels() >= 3)
             {
-                var chan0 = GetBrightnessComponent(src);
+                var chan0 = Utils.GetBrightnessComponent(src);
                 img = new Mat(chan0.Size(), MatType.CV_32FC1);
                 Cv2.BoxFilter(chan0, img, MatType.CV_32FC1, new Size(7, 7), null, normalize: false, BorderTypes.Replicate);
             }
@@ -168,46 +123,5 @@ namespace PHash
         double ph_dct_videohash_dist(ulong64* hashA, int N1,
                                                    ulong64* hashB, int N2,
                                                    int threshold = 21);*/
-
-        /*byte[] ph_mh_imagehash(string filename, ref int N,
-                                               float alpha = 2.0f,
-                                               float lvl = 1.0f)
-        { 
-        }*/
-
-        //double ph_hammingdistance2(byte[] hashA, int lenA, byte[] hashB, int lenB)
-        public static double HammingDistance2(byte[] hashA, byte[] hashB)
-        {
-            int lenA = hashA.Length;
-            int lenB = hashB.Length;
-            if (lenA != lenB)
-            {
-                return -1.0;
-            }
-            if ((hashA == null) || (hashB == null) || (lenA <= 0))
-            {
-                return -1.0;
-            }
-            double dist = 0;
-            byte D = 0;
-            for (int i = 0; i < lenA; i++)
-            {
-                D = (byte)(hashA[i] ^ hashB[i]);
-                dist += ph_bitcount8(D);
-            }
-            double bits = (double)lenA * 8;
-            return dist / bits;
-        }
-
-        private static int ph_bitcount8(byte val)
-        {
-            int num = 0;
-            while (val != 0)
-            {
-                num++;
-                val &= (byte)(val - 1);
-            }
-            return num;
-        }
     }
 }
