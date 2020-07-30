@@ -6,6 +6,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:conv="clr-namespace:ImageSim.Converters"
+             xmlns:contr="clr-namespace:ImageSim.Controls"
              mc:Ignorable="d"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
@@ -17,13 +18,19 @@
             </ResourceDictionary.MergedDictionaries>
         
         
-        <vm:ViewModelLocator x:Key="Locator" d:IsDataSource="True"/>
-      
-        <DataTemplate DataType="{x:Type vm:EmptyDetailsVM}">
-            <Grid>
-                <TextBlock Text="No file selected"/>
-            </Grid>
-        </DataTemplate>
+            <vm:ViewModelLocator x:Key="Locator" d:IsDataSource="True"/>
+
+            <DataTemplate DataType="{x:Type vm:FileListVM}">
+                <contr:FileListControl x:Name="files"/>
+            </DataTemplate>
+            
+            <DataTemplate DataType="{x:Type vm:EmptyDetailsVM}">
+                <Grid>
+                    <TextBlock Text="Select any file to view details" 
+                               FontSize="20" Margin="10"
+                               Style="{DynamicResource MahApps.Styles.TextBlock}"/>
+                </Grid>
+            </DataTemplate>
 
         <DataTemplate DataType="{x:Type vm:FileDetailsVM}">
             <Grid>
@@ -33,7 +40,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="{Binding FilePath, StringFormat='Path: {0}'}"/>
+                <TextBlock Grid.Row="0" Text="{Binding FilePath}"/>
                 <TextBlock Grid.Row="1" Text="{Binding FileSize, StringFormat='File size: {0}', 
                                 Converter={conv:FileSizeFormatConverter}}"/>
             </Grid>
@@ -53,7 +60,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="{Binding FilePath, StringFormat='Path: {0}'}"/>
+                <TextBlock Grid.Row="0" Text="{Binding FilePath}"/>
                 <TextBlock Grid.Row="1" Text="{Binding FileSize, StringFormat='File size: {0}', 
                                 Converter={conv:FileSizeFormatConverter}}"/>
                 <TextBlock Grid.Row="2" Text="{Binding Format, StringFormat='Format: {0}'}"/>
@@ -106,15 +113,15 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
 
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <ContentControl Grid.Column="2" Content="{Binding DetailsVM}"/>
-                    <Button Grid.Row="1" HorizontalAlignment="Right" Content="Next" 
+                    <ContentControl Grid.Column="2" Content="{Binding DetailsVM}" Focusable="False" Margin="10"/>
+                    <Button Grid.Row="1" HorizontalAlignment="Right" Content="Skip" Margin="10,4"
                             Command="{Binding ResolveCommand}"/>
                 </Grid>
             </Grid>
@@ -128,7 +135,8 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="Click on image to keep it. Another image would be deleted."/>
+                <TextBlock Text="Click on image to keep it. Another image would be moved to Recycle Bin."
+                           FontSize="16" Margin="10,4" HorizontalAlignment="Center"/>
 
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
@@ -136,13 +144,14 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Button Grid.Column="0" Content="{Binding FirstImage}" 
+                    <Button Grid.Column="0" Content="{Binding FirstImage}" Margin="4"
                             Command="{Binding KeepImageCommand}" CommandParameter="{Binding FirstImage}"/>
-                    <Button Grid.Column="1" Content="{Binding SecondImage}"
+                    <Button Grid.Column="1" Content="{Binding SecondImage}" Margin="4"
                             Command="{Binding KeepImageCommand}" CommandParameter="{Binding SecondImage}"/>
                 </Grid>
                 
-                <Button Grid.Row="2" Content="Skip" HorizontalAlignment="Right" Command="{Binding ResolveCommand}"/>
+                <Button Grid.Row="2" Content="Skip" HorizontalAlignment="Right" Margin="10,4"
+                        Command="{Binding ResolveCommand}"/>
             </Grid>
         </DataTemplate>
         
@@ -162,7 +171,7 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <ContentControl Content="{Binding CurrentConflict}"/>
+                <ContentControl Content="{Binding CurrentConflict}" Focusable="False"/>
 
                 <Grid Grid.Row="1" HorizontalAlignment="Center">
                     <TextBlock Grid.Column="1" Margin="10,0,10,0">

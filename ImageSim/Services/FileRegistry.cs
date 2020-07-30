@@ -5,10 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Collections.ObjectModel;
+using ImageSim.Messages;
+using GalaSoft.MvvmLight.Messaging;
 
 namespace ImageSim.Services
 {
-    public class FSImageProvider : IImageProvider
+    public class FileRegistry : IFileRegistry
     {
         public async IAsyncEnumerable<string> GetFilesAsync(string folder, Predicate<string> filter, 
             [EnumeratorCancellation] CancellationToken token = default)
@@ -52,11 +55,9 @@ namespace ImageSim.Services
         };
     }
 
-    public class DummyImageProvider : IImageProvider
+    public class DummyFileRegistry : IFileRegistry
     {
-        public string WorkingFolder { get; set; }
-
-        public async IAsyncEnumerable<string> GetFilesAsync(string folder, Predicate<string> filter, 
+         public async IAsyncEnumerable<string> GetFilesAsync(string folder, Predicate<string> filter, 
             [EnumeratorCancellation] CancellationToken token = default)
         {
             for (int i = 0; i < 20; i++)

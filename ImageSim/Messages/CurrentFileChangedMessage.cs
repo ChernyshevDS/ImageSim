@@ -8,11 +8,11 @@ namespace ImageSim.Messages
 {
     public class CurrentFileChangedMessage : MessageBase
     {
-        public CurrentFileChangedMessage(GenericFileVM file)
+        public CurrentFileChangedMessage(string file)
         {
             File = file;
         }
 
-        public GenericFileVM File { get; }
+        public string File { get; }
     }
 }

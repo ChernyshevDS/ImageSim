@@ -14,14 +14,17 @@
         DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="boolToVis"/>
+        <conv:BooleanToVisibilityConverter x:Key="invBoolToVis" IsInverted="True"/>
     </Window.Resources>
 
     <mah:MetroWindow.LeftWindowCommands>
         <mah:WindowCommands ShowLastSeparator="False">
             <mah:DropDownButton Content="Files">
                 <mah:DropDownButton.Items>
-                    <MenuItem Header="Add files..." Command="{Binding AddFilesCommand}"/>
-                    <MenuItem Header="Add from folder..." Command="{Binding AddFromFolderCommand}"/>
+                    <MenuItem Header="Add files..." ToolTip="Add files to comparison" 
+                              ToolTipService.Placement="Right" Command="{Binding AddFilesCommand}"/>
+                    <MenuItem Header="Add from folder..." ToolTip="Add all files from selected folder to comparison" 
+                              ToolTipService.Placement="Right" Command="{Binding AddFromFolderCommand}"/>
                 </mah:DropDownButton.Items>
             </mah:DropDownButton>
             <mah:DropDownButton Content="Tools">
@@ -34,8 +37,7 @@
             </mah:DropDownButton>
         </mah:WindowCommands>
     </mah:MetroWindow.LeftWindowCommands>
-    
-    
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
@@ -43,38 +45,9 @@
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="2.5*"/>
-            </Grid.ColumnDefinitions>
-
-            <ListBox Grid.Column="0" ItemsSource="{Binding LocatedFiles}" IsSynchronizedWithCurrentItem="True" 
-                     SelectedItem="{Binding SelectedFile, Mode=OneWayToSource}" MinWidth="200">
-                <ListBox.InputBindings>
-                    <KeyBinding Key="Delete" Command="{Binding SelectedFile.ExcludeCommand}"/>
-                </ListBox.InputBindings>
-
-                <ListBox.ItemTemplate>
-                    <DataTemplate DataType="{x:Type vm:GenericFileVM}">
-                        <Border Background="Transparent">
-                            <TextBlock Text="{Binding FilePath, Converter={conv:FileNameFromPathConverter}}" ToolTip="{Binding FilePath}"/>
-                            <Border.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="Exclude" Command="{Binding ExcludeCommand}"/>
-                                    <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
-                                </ContextMenu>
-                            </Border.ContextMenu>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-            
-            <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" 
-                    VerticalAlignment="Stretch" Style="{DynamicResource MahApps.Styles.GridSplitter}"/>
-            
-            <TabControl Grid.Column="2" TabStripPlacement="Top" ItemsSource="{Binding Tabs}" 
-                        Style="{DynamicResource MahApps.Styles.TabControl.AnimatedSingleRow}">
+            <TabControl x:Name="tabs" TabStripPlacement="Top" ItemsSource="{Binding Tabs}" 
+                        Style="{DynamicResource MahApps.Styles.TabControl.AnimatedSingleRow}"
+                        Visibility="{Binding HasLoadedFiles, Converter={StaticResource boolToVis}}">
                 <TabControl.ItemContainerStyle>
                     <Style TargetType="TabItem" BasedOn="{StaticResource MahApps.Styles.TabItem}">
                         <Setter Property="HeaderTemplate">
@@ -120,10 +93,81 @@
                     </Style>
                 </TabControl.ItemContainerStyle>
             </TabControl>
+
+            <ScrollViewer x:Name="filler" VerticalScrollBarVisibility="Auto" 
+                          Visibility="{Binding HasLoadedFiles, Converter={StaticResource invBoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <FlowDocumentScrollViewer FontFamily="{DynamicResource MahApps.Fonts.Family.Control}"
+                                            VerticalScrollBarVisibility="Disabled">
+                        <FlowDocument>
+                            <FlowDocument.Resources>
+                                <Style TargetType="Paragraph">
+                                    <Setter Property="FontSize" Value="16"/>
+                                    <Setter Property="Foreground" 
+                                                Value="{DynamicResource MahApps.Brushes.SystemControlForegroundBaseMediumHigh}"/>
+                                </Style>
+                            </FlowDocument.Resources>
+
+                            <Paragraph FontSize="20" Foreground="{DynamicResource MahApps.Brushes.Accent}">
+                                ImageSim
+                            </Paragraph>
+                            <Paragraph>
+                                ImageSim is a simple application allowing you to find similar or exact copies of images 
+                                    in folders on your computer.
+                            </Paragraph>
+                            <Paragraph>
+                                Exact copies are searched by calculating MD5 hash of files provided for comparison. 
+                                    Hashing results are stored in cache between runs.
+                            </Paragraph>
+                            <Paragraph>
+                                <Run>Image duplicates search is based on perceptual hash implementations by</Run>
+                                <Hyperlink NavigateUri="http://phash.org/docs/design.html" ToolTip="{Binding NavigateUri, 
+                                        RelativeSource={RelativeSource Self}}" Command="{Binding OpenLinkCommand}" 
+                                           CommandParameter="{Binding NavigateUri, RelativeSource={RelativeSource Self}}">
+                                    pHash.org
+                                </Hyperlink>
+                            </Paragraph>
+                            <Paragraph TextAlignment="Center">
+                                <Run>Add some files to start!</Run>
+                            </Paragraph>
+                        </FlowDocument>
+                    </FlowDocumentScrollViewer>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Style="{DynamicResource MahApps.Styles.Button.Dialogs.Accent}" Margin="10" Padding="10"
+                                Command="{Binding AddFilesCommand}">
+                            <StackPanel Orientation="Horizontal">
+                                <Viewbox Stretch="Uniform" Width="30" Height="30">
+                                    <Path Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" 
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M0,7 l7,-7 l13,0 l0,27 l-20,0 z M0,7 l7,0 l0,-7 M4,17 l12,0 M4,21 l12,0 M4,13 l12,0"/>
+                                </Viewbox>
+                                <TextBlock Text="Add files" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{DynamicResource MahApps.Styles.Button.Dialogs.Accent}" Margin="10" Padding="10"
+                                Command="{Binding AddFromFolderCommand}">
+                            <StackPanel Orientation="Horizontal">
+                                <Viewbox Stretch="Uniform" Width="30" Height="30">
+                                    <Path Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" 
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M30,5 l0,20 l-30,0 l0,-20 l16,0 l4,-4 l6,0 l4,4 l-14,0"/>
+                                </Viewbox>
+                                <TextBlock Text="Add folder" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
         </Grid>
 
         <StatusBar Grid.Row="1">
-            <TextBlock Text="{Binding LocatedFiles.Count, StringFormat='Files: {0}'}"/>
+            <TextBlock Text="{Binding Source={StaticResource Locator}, Path=FilesVM.LocatedFiles.Count, 
+                StringFormat='Files: {0}', FallbackValue='No files'}"/>
         </StatusBar>
     </Grid>
 </mah:MetroWindow>
