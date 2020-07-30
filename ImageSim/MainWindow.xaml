@@ -1,40 +1,48 @@
-﻿<Window x:Class="ImageSim.MainWindow"
+﻿<mah:MetroWindow x:Class="ImageSim.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ImageSim"
+        xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
         xmlns:vm="clr-namespace:ImageSim.ViewModels"
         xmlns:conv="clr-namespace:ImageSim.Converters"
         mc:Ignorable="d"
-        Title="ImageSim" Height="450" Width="800"
+        GlowBrush="{DynamicResource MahApps.Brushes.Accent}"
+        Title="ImageSim" Height="450" Width="800" ResizeMode="CanResizeWithGrip"
+        WindowStartupLocation="CenterScreen"
         DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="boolToVis"/>
     </Window.Resources>
 
+    <mah:MetroWindow.LeftWindowCommands>
+        <mah:WindowCommands ShowLastSeparator="False">
+            <mah:DropDownButton Content="Files">
+                <mah:DropDownButton.Items>
+                    <MenuItem Header="Add files..." Command="{Binding AddFilesCommand}"/>
+                    <MenuItem Header="Add from folder..." Command="{Binding AddFromFolderCommand}"/>
+                </mah:DropDownButton.Items>
+            </mah:DropDownButton>
+            <mah:DropDownButton Content="Tools">
+                <mah:DropDownButton.Items>
+                    <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
+                    <MenuItem Header="Find similar images (DCT)" Command="{Binding CheckSimilarDCTCommand}"/>
+                    <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"/>
+                    <MenuItem Header="Sync cache" Command="{Binding SyncCacheCommand}"/>
+                </mah:DropDownButton.Items>
+            </mah:DropDownButton>
+        </mah:WindowCommands>
+    </mah:MetroWindow.LeftWindowCommands>
+    
+    
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Menu>
-            <MenuItem Header="Files">
-                <MenuItem Header="Add files..." Command="{Binding AddFilesCommand}"/>
-                <MenuItem Header="Add from folder..." Command="{Binding AddFromFolderCommand}"/>
-            </MenuItem>
-
-            <MenuItem Header="Tools">
-                <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
-                <MenuItem Header="Find similar images (DCT)" Command="{Binding CheckSimilarDCTCommand}"/>
-                <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"/>
-                <MenuItem Header="Sync cache" Command="{Binding SyncCacheCommand}"/>
-            </MenuItem>
-        </Menu>
-
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -61,12 +69,14 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+            
             <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" 
-                    VerticalAlignment="Stretch" Background="{x:Static SystemColors.ActiveBorderBrush}"/>
-            <TabControl Grid.Column="2" TabStripPlacement="Top" ItemsSource="{Binding Tabs}" SelectedIndex="1">
+                    VerticalAlignment="Stretch" Style="{DynamicResource MahApps.Styles.GridSplitter}"/>
+            
+            <TabControl Grid.Column="2" TabStripPlacement="Top" ItemsSource="{Binding Tabs}" 
+                        Style="{DynamicResource MahApps.Styles.TabControl.AnimatedSingleRow}">
                 <TabControl.ItemContainerStyle>
-                    <Style TargetType="TabItem">
-                        <Setter Property="Header" Value="{Binding}"/>
+                    <Style TargetType="TabItem" BasedOn="{StaticResource MahApps.Styles.TabItem}">
                         <Setter Property="HeaderTemplate">
                             <Setter.Value>
                                 <DataTemplate DataType="{x:Type vm:TabVM}">
@@ -76,22 +86,44 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock Text="{Binding Header}" Margin="4"/>
-                                        <Button Grid.Column="1" Content="X" Width="20" Height="20"
-                                                Command="{Binding CloseTabCommand}" 
-                                                Visibility="{Binding CanCloseTab, Converter={StaticResource boolToVis}}"/>
+                                        <TextBlock x:Name="text" Text="{Binding}" Margin="4" FontSize="20"/>
+                                        <Button x:Name="closeBtn" Grid.Column="1" Style="{DynamicResource MahApps.Styles.Button.Chromeless}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Top" 
+                                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                Command="{Binding DataContext.CloseTabCommand, 
+                                                    RelativeSource={RelativeSource FindAncestor, AncestorType=TabItem}}" 
+                                                Visibility="Hidden">
+                                            <Button.Content>
+                                                <Border BorderThickness="1" BorderBrush="{DynamicResource MahApps.Brushes.Accent}">
+                                                    <Path Margin="4" Fill="Blue" Stroke="Black" Data="M0,0 L6,6 M6,0 L0,6"/>
+                                                </Border>
+                                            </Button.Content>
+                                        </Button>
                                     </Grid>
+
+                                    <DataTemplate.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=TabItem}, Path=IsMouseOver}" Value="True"/>
+                                                <Condition Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=TabItem}, 
+                                                    Path=DataContext.CanCloseTab}" Value="True"/>
+                                            </MultiDataTrigger.Conditions>
+
+                                            <Setter TargetName="closeBtn" Property="Visibility" Value="Visible"/>
+                                        </MultiDataTrigger>
+                                    </DataTemplate.Triggers>
                                 </DataTemplate>
                             </Setter.Value>
                         </Setter>
+                        <Setter Property="Header" Value="{Binding Header}"/>
                         <Setter Property="Content" Value="{Binding ContentVM}"/>
                     </Style>
                 </TabControl.ItemContainerStyle>
             </TabControl>
         </Grid>
 
-        <StatusBar Grid.Row="2">
+        <StatusBar Grid.Row="1">
             <TextBlock Text="{Binding LocatedFiles.Count, StringFormat='Files: {0}'}"/>
         </StatusBar>
     </Grid>
-</Window>
+</mah:MetroWindow>

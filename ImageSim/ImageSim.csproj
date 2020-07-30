@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="akavache" Version="6.10.20" />
+    <PackageReference Include="MahApps.Metro" Version="2.1.1" />
     <PackageReference Include="MvvmLightLibsStd10" Version="5.4.1.1" />
     <PackageReference Include="OpenCvSharp4.Windows" Version="4.3.0.20200701" />
   </ItemGroup>
