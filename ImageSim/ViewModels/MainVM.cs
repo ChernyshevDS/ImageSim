@@ -4,6 +4,7 @@ using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Messages;
 using ImageSim.Services;
 using ImageSim.Services.Storage;
+using MahApps.Metro.Controls.Dialogs;
 using Microsoft.Win32;
 using System;
 using System.Collections;
@@ -29,6 +30,7 @@ namespace ImageSim.ViewModels
     {
         private readonly IFileDataStorage FileStorage;
         private readonly FileListVM FilesVM;
+        private readonly IDialogCoordinator DialogService;
         
         private bool hasLoadedFiles;
         private RelayCommand addFromFolderCmd;
@@ -54,10 +56,11 @@ namespace ImageSim.ViewModels
 
         public ObservableCollection<TabVM> Tabs { get; }
 
-        public MainVM(FileListVM fileList, IFileDataStorage storage)
+        public MainVM(FileListVM fileList, IFileDataStorage storage, IDialogCoordinator dial)
         {
             FileStorage = storage;
             FilesVM = fileList;
+            DialogService = dial;
 
             var detailsTab = new TabVM()
             {
@@ -89,7 +92,7 @@ namespace ImageSim.ViewModels
             });
         }
 
-        private void HandleAddFromFolder()
+        private async void HandleAddFromFolder()
         {
             var dlg = new System.Windows.Forms.FolderBrowserDialog()
             {
@@ -99,7 +102,19 @@ namespace ImageSim.ViewModels
 
             if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
-                FilesVM.AddFolder(dlg.SelectedPath);
+                var ctrl = await DialogService.ShowProgressAsync(this, "Adding files...", "Added 0 files");
+                ctrl.SetIndeterminate();
+                var registry = new FileRegistry();
+                var files = registry.GetFilesAsync(dlg.SelectedPath, x => true);
+                var added = 0;
+                await foreach (var file in files)
+                {
+                    await FilesVM.AddFileAsync(file);
+                    ctrl.SetMessage($"Added {++added} files");
+                }
+
+                await ctrl.CloseAsync();
+                //FilesVM.AddFolder(dlg.SelectedPath);
             }
         }
 
@@ -324,6 +339,7 @@ namespace ImageSim.ViewModels
     public class FileListVM : ViewModelBase
     {
         private readonly IFileRegistry FileRegistry;
+        private readonly IDialogCoordinator DialogService;
         private readonly ObservableCollection<string> Files = new ObservableCollection<string>();
         
         private RelayCommand<string> deleteFileCommand;
@@ -350,9 +366,10 @@ namespace ImageSim.ViewModels
 
         public ViewModelBase FileDetailsVM { get => fileDetailsVM; set => Set(ref fileDetailsVM, value); }
 
-        public FileListVM(IFileRegistry images)
+        public FileListVM(IFileRegistry images, IDialogCoordinator dial)
         {
             this.FileRegistry = images;
+            this.DialogService = dial;
             LocatedFiles = new ReadOnlyObservableCollection<string>(Files);
 
             if (IsInDesignMode)
@@ -402,7 +419,7 @@ namespace ImageSim.ViewModels
             ExcludeFile(obj);
             try
             {
-                File.Delete(obj);
+                FileRegistry.DeleteFileToBin(obj);
             }
             catch (IOException ex)
             {
@@ -410,35 +427,57 @@ namespace ImageSim.ViewModels
             }
         }
 
+        public bool AddFile(string path)
+        {
+            if (Files.Any(x => x == path))
+                return false;
+            Files.Add(path);
+            return true;
+        }
+
+        public async Task<bool> AddFileAsync(string path)
+        {
+            var hasFile = await Task.Run(() => Files.Contains(path));
+            if(!hasFile)
+            {
+                Files.Add(path);
+            }
+            return !hasFile;
+        }
+
         public int AddFiles(IEnumerable<string> paths)
         {
             var added = 0;
             foreach (var file in paths)
             {
-                if (Files.Any(x => x == file))
-                    continue;
-
-                Files.Add(file);
-                added++;
+                if(AddFile(file))
+                    added++;
             }
             return added;
         }
 
-        public void AddFolder(string path)
+        public async void AddFolder(string path)
         {
-            var result = ProgressWindow.RunTaskAsync(async (progress, token) => {
-                int added = 0;
-                await foreach (var file in FileRegistry.GetFilesAsync(path, x => true))
-                {
-                    if (Files.Any(x => x == file))
-                        continue;
+            /*var result = ProgressWindow.RunTaskAsync(async (progress, token) => {
 
-                    Files.Add(file);
-                    added++;
-                    progress.Report(new ProgressArgs($"Added {added} files", null));
-                }
-                return added;
-            }, "Adding files...", false);
+                return await Task.Run(() => {
+                    int added = 0;
+                    var registry = (FileRegistry)FileRegistry;
+                    foreach (var file in registry.GetFiles(path, x => true))
+                    {
+                        if (Files.Any(x => x == file))
+                            continue;
+
+                        App.Current.Dispatcher.BeginInvoke((Action)delegate { Files.Add(file); });
+                        
+                        added++;
+                        progress.Report(new ProgressArgs($"Added {added} files", null));
+                    }
+                    return added;
+                });
+                
+            }, "Adding files...", false);*/
+            
         }
     }
 

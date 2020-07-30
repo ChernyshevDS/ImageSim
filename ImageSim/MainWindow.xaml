@@ -5,13 +5,15 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ImageSim"
         xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
+        xmlns:dialog="http://metro.mahapps.com/winfx/xaml/controls"
         xmlns:vm="clr-namespace:ImageSim.ViewModels"
         xmlns:conv="clr-namespace:ImageSim.Converters"
         mc:Ignorable="d"
         GlowBrush="{DynamicResource MahApps.Brushes.Accent}"
         Title="ImageSim" Height="450" Width="800" ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterScreen"
-        DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}">
+        DataContext="{Binding Source={StaticResource Locator}, Path=MainVM}"
+        dialog:DialogParticipation.Register="{Binding}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="boolToVis"/>
         <conv:BooleanToVisibilityConverter x:Key="invBoolToVis" IsInverted="True"/>

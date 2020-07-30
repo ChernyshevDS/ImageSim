@@ -4,6 +4,7 @@ using System.Text;
  
 using GalaSoft.MvvmLight.Ioc;
 using ImageSim.Services;
+using MahApps.Metro.Controls.Dialogs;
 
 namespace ImageSim.ViewModels
 {
@@ -23,7 +24,8 @@ namespace ImageSim.ViewModels
                 SimpleIoc.Default.Register<IFileDataStorage>(() => storage);
                 SimpleIoc.Default.Register<IFileRegistry, FileRegistry>();
             }
-            
+
+            SimpleIoc.Default.Register<IDialogCoordinator>(() => DialogCoordinator.Instance);
             SimpleIoc.Default.Register<MainVM>();
             SimpleIoc.Default.Register<FileListVM>();
         }

@@ -10,5 +10,6 @@ namespace ImageSim.Services
     public interface IFileRegistry
     {
         IAsyncEnumerable<string> GetFilesAsync(string folder, Predicate<string> filter, CancellationToken token = default);
+        void DeleteFileToBin(string path);
     }
 }
