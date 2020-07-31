@@ -73,6 +73,11 @@ namespace ImageSim.ViewModels
 
             Messenger.Default.Register<ConflictResolvedMessage>(this, msg => {
                 Conflicts.Remove(msg.Conflict);
+
+                if (Conflicts.Count == 0)
+                {
+                    Messenger.Default.Send(new ConflictCollectionClearedMessage(this));
+                }
             });
         }
 
@@ -103,6 +108,12 @@ namespace ImageSim.ViewModels
                     break;
                 default:
                     break;
+            }
+
+            var last = Conflicts.LastOrDefault();
+            if (CurrentConflict != null && last != null && CurrentConflict == last)
+            {
+                CurrentConflict.IsLastConflict = true;
             }
         }
     }

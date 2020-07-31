@@ -32,158 +32,194 @@
                 </Grid>
             </DataTemplate>
 
-        <DataTemplate DataType="{x:Type vm:FileDetailsVM}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+            <DataTemplate DataType="{x:Type vm:FileDetailsVM}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="{Binding FilePath}"/>
-                <TextBlock Grid.Row="1" Text="{Binding FileSize, StringFormat='File size: {0}', 
-                                Converter={conv:FileSizeFormatConverter}}"/>
-            </Grid>
-        </DataTemplate>
+                    <TextBlock Grid.Row="0" Text="{Binding FilePath}"/>
+                    <TextBlock Grid.Row="1" Text="{Binding FileSize, StringFormat='File size: {0}', 
+                                    Converter={conv:FileSizeFormatConverter}}"/>
+                </Grid>
+            </DataTemplate>
 
-        <DataTemplate DataType="{x:Type vm:ImageDetailsVM}">
-            <DataTemplate.Resources>
-                <conv:BitmapFrameConverter x:Key="frameConv"/>
-            </DataTemplate.Resources>
+            <DataTemplate DataType="{x:Type vm:ImageDetailsVM}">
+                <DataTemplate.Resources>
+                    <conv:BitmapFrameConverter x:Key="frameConv"/>
+                </DataTemplate.Resources>
             
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="{Binding FilePath}"/>
-                <TextBlock Grid.Row="1" Text="{Binding FileSize, StringFormat='File size: {0}', 
-                                Converter={conv:FileSizeFormatConverter}}"/>
-                <TextBlock Grid.Row="2" Text="{Binding Format, StringFormat='Format: {0}'}"/>
-                <TextBlock Grid.Row="3">
-                                <Run Text="Size: "/>
-                                <Run Text="{Binding Width}"/>
-                                <Run Text="x"/>
-                                <Run Text="{Binding Height}"/>
-                </TextBlock>
-                <Image x:Name="image" Grid.Row="4" Source="{Binding FilePath, Converter={StaticResource frameConv}}" 
-                                   Stretch="Uniform"/>
-                <Border x:Name="error" Grid.Row="4" Margin="10" BorderBrush="Red" BorderThickness="2" Visibility="Collapsed">
-                    <TextBlock Text="Can't create preview" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-            </Grid>
+                    <TextBlock Grid.Row="0" Text="{Binding FilePath}"/>
+                    <TextBlock Grid.Row="1" Text="{Binding FileSize, StringFormat='File size: {0}', 
+                                    Converter={conv:FileSizeFormatConverter}}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding Format, StringFormat='Format: {0}'}"/>
+                    <TextBlock Grid.Row="3">
+                                    <Run Text="Size: "/>
+                                    <Run Text="{Binding Width}"/>
+                                    <Run Text="x"/>
+                                    <Run Text="{Binding Height}"/>
+                    </TextBlock>
+                    <Image x:Name="image" Grid.Row="4" Source="{Binding FilePath, Converter={StaticResource frameConv}}" 
+                                       Stretch="Uniform"/>
+                    <Border x:Name="error" Grid.Row="4" Margin="10" BorderBrush="Red" BorderThickness="2" Visibility="Collapsed">
+                        <TextBlock Text="Can't create preview" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </Grid>
 
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding IsValid}" Value="False">
-                    <Setter TargetName="image" Property="Source" Value="{x:Null}"/>
-                    <Setter TargetName="image" Property="Visibility" Value="Collapsed"/>
-                    <Setter TargetName="error" Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </DataTemplate.Triggers>
-        </DataTemplate>
+                <DataTemplate.Triggers>
+                    <DataTrigger Binding="{Binding IsValid}" Value="False">
+                        <Setter TargetName="image" Property="Source" Value="{x:Null}"/>
+                        <Setter TargetName="image" Property="Visibility" Value="Collapsed"/>
+                        <Setter TargetName="error" Property="Visibility" Value="Visible"/>
+                    </DataTrigger>
+                </DataTemplate.Triggers>
+            </DataTemplate>
 
-        <DataTemplate DataType="{x:Type vm:HashConflictVM}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="2*"/>
-                </Grid.ColumnDefinitions>
-                <ListBox ItemsSource="{Binding ConflictingFiles}" IsSynchronizedWithCurrentItem="True" 
-                                         SelectedItem="{Binding SelectedFile}">
-                    <ListBox.InputBindings>
-                        <KeyBinding Key="Delete" Command="{Binding RelativeSource={RelativeSource FindAncestor, 
-                                            AncestorType=ListBox}, Path=SelectedItem.DeleteCommand}"/>
-                    </ListBox.InputBindings>
-
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:HashConflictEntryVM}">
-                            <TextBlock Text="{Binding FilePath}" ToolTip="{Binding FilePath}">
-                                <TextBlock.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
-                                    </ContextMenu>
-                                </TextBlock.ContextMenu>
-                            </TextBlock>
+            <Style x:Key="SkipConflictButtonStyle" TargetType="Button" 
+                   BasedOn="{StaticResource MahApps.Styles.Button.Dialogs.Accent}">
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="ToolTip" Value="Move to next conflict without any actions"/>
+                <Setter Property="ContentTemplate">
+                    <Setter.Value>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <ContentPresenter Content="{Binding}" VerticalAlignment="Center"/>
+                                <Path Margin="6,2,0,2" VerticalAlignment="Center" HorizontalAlignment="Right"
+                                    Stroke="White" StrokeThickness="2" 
+                                    StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                    Data="M0,10 A10,10,180,1,1,20,10 A10,10,180,1,1,0,10 M5,10 L15,10 L10,5 M15,10 L10,15"/>
+                            </StackPanel>
                         </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                    </Setter.Value>
+                </Setter>
 
-                <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsLastConflict}" Value="True">
+                        <Setter Property="ContentTemplate">
+                            <Setter.Value>
+                                <DataTemplate>
+                                    <TextBlock Text="Done!"/>
+                                </DataTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+            
+            <DataTemplate DataType="{x:Type vm:HashConflictVM}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Delete redudant files to resolve conflict. Deleted files go to Recycle Bin."
+                               FontSize="16" Margin="10,4" HorizontalAlignment="Center"/>
+                    <Grid DockPanel.Dock="Bottom">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="2*"/>
+                        </Grid.ColumnDefinitions>
+                        <ListBox ItemsSource="{Binding ConflictingFiles}" IsSynchronizedWithCurrentItem="True" 
+                                                 SelectedItem="{Binding SelectedFile}">
+                            <ListBox.InputBindings>
+                                <KeyBinding Key="Delete" Command="{Binding RelativeSource={RelativeSource FindAncestor, 
+                                                    AncestorType=ListBox}, Path=SelectedItem.DeleteCommand}"/>
+                            </ListBox.InputBindings>
 
-                <Grid Grid.Column="2">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:HashConflictEntryVM}">
+                                    <TextBlock Text="{Binding FilePath}" ToolTip="{Binding FilePath}">
+                                        <TextBlock.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
+                                            </ContextMenu>
+                                        </TextBlock.ContextMenu>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+                        <Grid Grid.Column="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <ContentControl Grid.Column="2" Content="{Binding DetailsVM}" Focusable="False" Margin="10"/>
+                            <Button Grid.Row="1" HorizontalAlignment="Right" Content="Skip" Margin="10,4"
+                                    Command="{Binding ResolveCommand}" Style="{StaticResource SkipConflictButtonStyle}"/>
+                        </Grid>
+                    </Grid>
+                </DockPanel>
+            </DataTemplate>
+
+            <DataTemplate DataType="{x:Type vm:ImageDCTConflictVM}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="Click on image to keep it. Another image would be moved to Recycle Bin."
+                               FontSize="16" Margin="10,4" HorizontalAlignment="Center"/>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Content="{Binding FirstImage}" Margin="4"
+                                Command="{Binding KeepImageCommand}" CommandParameter="{Binding FirstImage}"/>
+                        <Button Grid.Column="1" Content="{Binding SecondImage}" Margin="4"
+                                Command="{Binding KeepImageCommand}" CommandParameter="{Binding SecondImage}"/>
+                    </Grid>
+                
+                    <Button Grid.Row="2" Content="Skip" HorizontalAlignment="Right" Margin="10,4"
+                            Command="{Binding ResolveCommand}" Style="{StaticResource SkipConflictButtonStyle}"/>
+                </Grid>
+            </DataTemplate>
+
+            <DataTemplate DataType="{x:Type vm:ConflictCollectionVM}">
+                <DataTemplate.Resources>
+                    <conv:IntOffsetConverter x:Key="offsetConv"/>
+                </DataTemplate.Resources>
+
+                <Grid>
+                    <!--<Grid.InputBindings>
+                        <KeyBinding Key="B" Command="{Binding PreviousConflictCommand}"/>
+                        <KeyBinding Key="N" Command="{Binding NextConflictCommand}"/>
+                    </Grid.InputBindings>-->
+
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <ContentControl Grid.Column="2" Content="{Binding DetailsVM}" Focusable="False" Margin="10"/>
-                    <Button Grid.Row="1" HorizontalAlignment="Right" Content="Skip" Margin="10,4"
-                            Command="{Binding ResolveCommand}"/>
+
+                    <ContentControl x:Name="current" Content="{Binding CurrentConflict}" Focusable="False"/>
+
+                    <Grid Grid.Row="1" HorizontalAlignment="Center">
+                        <TextBlock Grid.Column="1" Margin="10,0,10,0">
+                            <Run Text="Conflict "/>
+                            <Run Text="{Binding CurrentIndex, Mode=OneWay, Converter={StaticResource offsetConv}, ConverterParameter=1}"/>
+                            <Run Text=" of "/>
+                            <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
+                        </TextBlock>
+                    </Grid>
                 </Grid>
-            </Grid>
-        </DataTemplate>
+            </DataTemplate>
 
-        <DataTemplate DataType="{x:Type vm:ImageDCTConflictVM}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Text="Click on image to keep it. Another image would be moved to Recycle Bin."
-                           FontSize="16" Margin="10,4" HorizontalAlignment="Center"/>
-
-                <Grid Grid.Row="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Button Grid.Column="0" Content="{Binding FirstImage}" Margin="4"
-                            Command="{Binding KeepImageCommand}" CommandParameter="{Binding FirstImage}"/>
-                    <Button Grid.Column="1" Content="{Binding SecondImage}" Margin="4"
-                            Command="{Binding KeepImageCommand}" CommandParameter="{Binding SecondImage}"/>
-                </Grid>
-                
-                <Button Grid.Row="2" Content="Skip" HorizontalAlignment="Right" Margin="10,4"
-                        Command="{Binding ResolveCommand}"/>
-            </Grid>
-        </DataTemplate>
-        
-        <DataTemplate DataType="{x:Type vm:ConflictCollectionVM}">
-            <DataTemplate.Resources>
-                <conv:IntOffsetConverter x:Key="offsetConv"/>
-            </DataTemplate.Resources>
-            
-            <Grid>
-                <Grid.InputBindings>
-                    <KeyBinding Key="B" Command="{Binding PreviousConflictCommand}"/>
-                    <KeyBinding Key="N" Command="{Binding NextConflictCommand}"/>
-                </Grid.InputBindings>
-
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <ContentControl Content="{Binding CurrentConflict}" Focusable="False"/>
-
-                <Grid Grid.Row="1" HorizontalAlignment="Center">
-                    <TextBlock Grid.Column="1" Margin="10,0,10,0">
-                        <Run Text="Conflict "/>
-                        <Run Text="{Binding CurrentIndex, Mode=OneWay, Converter={StaticResource offsetConv}, ConverterParameter=1}"/>
-                        <Run Text=" of "/>
-                        <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
-                    </TextBlock>
-                </Grid>
-            </Grid>
-        </DataTemplate>
-            
         </ResourceDictionary>
     </Application.Resources>
 </Application>

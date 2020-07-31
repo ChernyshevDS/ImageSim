@@ -32,7 +32,7 @@ namespace ImageSim.ViewModels
         private readonly IFileDataStorage FileStorage;
         private readonly FileListVM FilesVM;
         private readonly IDialogCoordinator DialogService;
-        
+
         private bool hasLoadedFiles;
         private RelayCommand addFromFolderCmd;
         private RelayCommand addFilesCmd;
@@ -43,6 +43,7 @@ namespace ImageSim.ViewModels
         private RelayCommand clearCacheCmd;
         private RelayCommand syncCacheCmd;
         private RelayCommand<Uri> openLinkCmd;
+        private TabVM currentTab;
 
         public RelayCommand AddFromFolderCommand => addFromFolderCmd ??= new RelayCommand(HandleAddFromFolder);
         public RelayCommand AddFilesCommand => addFilesCmd ??= new RelayCommand(HandleAddFiles);
@@ -58,6 +59,7 @@ namespace ImageSim.ViewModels
         public bool HasLoadedFiles { get => hasLoadedFiles; set => Set(ref hasLoadedFiles, value); }
 
         public ObservableCollection<TabVM> Tabs { get; }
+        public TabVM CurrentTab { get => currentTab; set => Set(ref currentTab, value); }
 
         public MainVM(IFileService fileService, FileListVM fileList, IFileDataStorage storage, IDialogCoordinator dial)
         {
@@ -88,6 +90,13 @@ namespace ImageSim.ViewModels
                 Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new ConflictCollectionVM() });
                 return;
             }
+
+            Messenger.Default.Register<ConflictCollectionClearedMessage>(this, msg =>
+            {
+                var tab = Tabs.SingleOrDefault(x => x.ContentVM == msg.ConflictsVM);
+                if (tab != null)
+                    Messenger.Default.Send(new TabClosingMessage(tab));
+            });
 
             Messenger.Default.Register<TabClosingMessage>(this, x =>
             {
@@ -126,7 +135,8 @@ namespace ImageSim.ViewModels
             ctrl.SetIndeterminate();
 
             var ch = System.Threading.Channels.Channel.CreateUnbounded<string>();
-            var producer = Task.Run(() => {
+            var producer = Task.Run(() =>
+            {
                 foreach (var file in files)
                 {
                     if (ctrl.IsCanceled)
@@ -176,7 +186,9 @@ namespace ImageSim.ViewModels
                 return;
             }
 
-            this.Tabs.Add(new TabVM() { Header = "Hash conflicts", ContentVM = result.Result });
+            var tab = new TabVM() { Header = "Hash conflicts", ContentVM = result.Result };
+            this.Tabs.Add(tab);
+            CurrentTab = tab;
         }
 
         private void HandleCompareDCTImageHashes()
@@ -194,7 +206,9 @@ namespace ImageSim.ViewModels
                 return;
             }
 
-            this.Tabs.Add(new TabVM() { Header = "DCT", ContentVM = result.Result });
+            var tab = new TabVM() { Header = "DCT", ContentVM = result.Result };
+            this.Tabs.Add(tab);
+            CurrentTab = tab;
         }
 
         private async Task<T> GetOrCreateAssociatedFileData<T>(string path, string key, Func<string, T> generator) where T : IFileRecordData, new()
@@ -426,8 +440,7 @@ namespace ImageSim.ViewModels
                         ExcludeFile(msg.FilePath);
                         break;
                     case FileOperation.Delete:
-                        ExcludeFile(msg.FilePath);
-                            
+                        DeleteFile(msg.FilePath);
                         break;
                     default:
                         break;
@@ -614,6 +627,10 @@ namespace ImageSim.ViewModels
             if (entry != null)
             {
                 ConflictingFiles.Remove(entry);
+                if (ConflictingFiles.Count == 1)
+                {
+                    MarkAsResolved();
+                }
             }
         }
     }
@@ -666,8 +683,11 @@ namespace ImageSim.ViewModels
     public class ConflictVM : ViewModelBase
     {
         private RelayCommand markResolvedCmd;
+        private bool isLastConflict;
 
         public RelayCommand ResolveCommand => markResolvedCmd ??= new RelayCommand(MarkAsResolved);
+
+        public bool IsLastConflict { get => isLastConflict; set => Set(ref isLastConflict, value); }
 
         public void MarkAsResolved()
         {

@@ -51,7 +51,8 @@
         <Grid Grid.Row="0">
             <TabControl x:Name="tabs" TabStripPlacement="Top" ItemsSource="{Binding Tabs}" 
                         Style="{DynamicResource MahApps.Styles.TabControl.AnimatedSingleRow}"
-                        Visibility="{Binding HasLoadedFiles, Converter={StaticResource boolToVis}}">
+                        Visibility="{Binding HasLoadedFiles, Converter={StaticResource boolToVis}}"
+                        SelectedItem="{Binding CurrentTab}">
                 <TabControl.ItemContainerStyle>
                     <Style TargetType="TabItem" BasedOn="{StaticResource MahApps.Styles.TabItem}">
                         <Setter Property="HeaderTemplate">
