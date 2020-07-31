@@ -23,7 +23,7 @@ namespace PHash
             }
         }*/
 
-        public static UInt64 GetImageHash(string file, Size clampTo)
+        public static UInt64 GetImageHash(string file, int clampWidth, int clampHeight)
         {
             using var fs = new System.IO.FileStream(file, System.IO.FileMode.Open, System.IO.FileAccess.Read);
             using var src = Mat.FromStream(fs, ImreadModes.Color);
@@ -31,15 +31,15 @@ namespace PHash
             if (src == null)
                 return 0;
 
-            if (clampTo.Width != 0 && clampTo.Height != 0)
+            if (clampWidth != 0 && clampHeight != 0)
             {
-                if (src.Width > clampTo.Width || src.Height > clampTo.Height)
+                if (src.Width > clampWidth || src.Height > clampHeight)
                 {
-                    var clamp_asp = (double)clampTo.Width / clampTo.Height;
+                    var clamp_asp = (double)clampWidth / clampHeight;
                     var inp_asp = (double)src.Width / src.Height;
                     var factor = inp_asp > clamp_asp 
-                        ? (double)clampTo.Width / src.Width 
-                        : (double)clampTo.Height / src.Height;
+                        ? (double)clampWidth / src.Width 
+                        : (double)clampHeight / src.Height;
                     
                     Cv2.Resize(src, src, Size.Zero, factor, factor, InterpolationFlags.Linear);
                 }

@@ -171,24 +171,80 @@ namespace ImageSim.ViewModels
             }
         }
 
-        private void HandleCompareHashes()
+        private async void HandleCompareHashes()
         {
-            var result = ProgressWindow.RunTaskAsync(
-                async (prog, tok) => await Task.Run(() => RunFilesHashingAsync(prog, tok)),
-                "Hashing...", true);
+            var result = await HandleCompareHashesAsync();
 
             if (result.IsCancelled)
                 return;
 
             if (result.Result == null)
             {
-                MessageBox.Show("No conflicts found!");
+                await DialogService.ShowMessageAsync(this, "Hooray!", "There are no files with same hash!");
                 return;
             }
 
             var tab = new TabVM() { Header = "Hash conflicts", ContentVM = result.Result };
             this.Tabs.Add(tab);
             CurrentTab = tab;
+        }
+
+        private async Task<OperationResult<ConflictCollectionVM>> HandleCompareHashesAsync()
+        {
+            var ctrl = await DialogService.ShowProgressAsync(this, "Calculating hashes...", "Hashed 0 files", true);
+
+            int processed = 0;
+            var total = FilesVM.LocatedFiles.Count;
+            var thread_count = Utils.GetRecommendedConcurrencyLevel();
+
+            var hashDict = new ConcurrentDictionary<string, string>(thread_count, total);
+            var results = await TaskExtensions.ForEachAsync(FilesVM.LocatedFiles, x => Task.Run(() =>
+            {
+                if (ctrl.IsCanceled)
+                    return false;
+
+                var data = GetOrCreateAssociatedFileData(x, HashData.Key,
+                    p => new HashData() { Hash = Utils.GetFileHash(p) }).Result;
+                hashDict.TryAdd(x, data.Hash);
+
+                var proc = Interlocked.Increment(ref processed);
+
+                var progress = (double)proc / total;
+                ctrl.SetProgress(progress);
+                ctrl.SetMessage($"Hashed {proc} of {total}");
+                return true;
+            }), thread_count);
+
+            if (ctrl.IsCanceled)
+            {
+                await ctrl.CloseAsync();
+                return new OperationResult<ConflictCollectionVM>(true, null);
+            }
+
+            ctrl.SetIndeterminate();
+            ctrl.SetMessage("Searching for hash conflicts...");
+
+            var groups = hashDict
+                .GroupBy(x => x.Value)
+                .Where(x => x.Count() > 1)
+                .ToList();
+
+            if (!groups.Any())
+            {
+                await ctrl.CloseAsync();
+                return new OperationResult<ConflictCollectionVM>(false, null);
+            }
+
+            ctrl.SetMessage("Building the view...");
+            var coll = new ConflictCollectionVM();
+            foreach (var group in groups)
+            {
+                var conflict = HashConflictVM.FromPaths(group.Select(x => x.Key));
+                coll.Conflicts.Add(conflict);
+            }
+
+            await ctrl.CloseAsync();
+            return new OperationResult<ConflictCollectionVM>(false, coll);
         }
 
         private void HandleCompareDCTImageHashes()
@@ -209,50 +265,6 @@ namespace ImageSim.ViewModels
             var tab = new TabVM() { Header = "DCT", ContentVM = result.Result };
             this.Tabs.Add(tab);
             CurrentTab = tab;
-        }
-
-        private async Task<T> GetOrCreateAssociatedFileData<T>(string path, string key, Func<string, T> generator) where T : IFileRecordData, new()
-        {
-            var needCacheUpdate = false;
-            var cachedRecord = await FileStorage.GetFileRecordAsync(path);
-            if (cachedRecord == null)   //no cache record found
-                cachedRecord = PersistentFileRecord.Create(path);
-
-            T filedata = default;
-            var time = PersistentFileRecord.ReadModificationTime(path);
-            if (time.HasValue)
-            {
-                if (cachedRecord.Modified == time)   //cached record is valid - file hasn't been changed
-                {
-                    if (cachedRecord.TryGetData<T>(key, out T data))   //success - use cached value
-                    {
-                        filedata = data;
-                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: loaded from cache");
-                    }
-                    else    //no cached Hash
-                    {
-                        filedata = generator(path);
-                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: no cached hash, calculated");
-                        needCacheUpdate = true;
-                    }
-                }
-                else    //cached value expired
-                {
-                    await FileStorage.RemoveFileRecordAsync(path);
-                    filedata = generator(path);
-                    //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: file modified, hash calculated");
-                    needCacheUpdate = true;
-                }
-            } // else current file can't be read - skip
-
-            if (needCacheUpdate)
-            {
-                cachedRecord.SetData(filedata);
-                await FileStorage.UpdateFileRecordAsync(path, cachedRecord);
-                System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: cache updated");
-            }
-
-            return filedata;
         }
 
         private async Task<ConflictCollectionVM> RunFilesDCTHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
@@ -305,6 +317,50 @@ namespace ImageSim.ViewModels
                 return null;
 
             return cvm;
+        }
+
+        private async Task<T> GetOrCreateAssociatedFileData<T>(string path, string key, Func<string, T> generator) where T : IFileRecordData, new()
+        {
+            var needCacheUpdate = false;
+            var cachedRecord = await FileStorage.GetFileRecordAsync(path);
+            if (cachedRecord == null)   //no cache record found
+                cachedRecord = PersistentFileRecord.Create(path);
+
+            T filedata = default;
+            var time = PersistentFileRecord.ReadModificationTime(path);
+            if (time.HasValue)
+            {
+                if (cachedRecord.Modified == time)   //cached record is valid - file hasn't been changed
+                {
+                    if (cachedRecord.TryGetData<T>(key, out T data))   //success - use cached value
+                    {
+                        filedata = data;
+                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: loaded from cache");
+                    }
+                    else    //no cached Hash
+                    {
+                        filedata = generator(path);
+                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: no cached hash, calculated");
+                        needCacheUpdate = true;
+                    }
+                }
+                else    //cached value expired
+                {
+                    await FileStorage.RemoveFileRecordAsync(path);
+                    filedata = generator(path);
+                    //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: file modified, hash calculated");
+                    needCacheUpdate = true;
+                }
+            } // else current file can't be read - skip
+
+            if (needCacheUpdate)
+            {
+                cachedRecord.SetData(filedata);
+                await FileStorage.UpdateFileRecordAsync(path, cachedRecord);
+                System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: cache updated");
+            }
+
+            return filedata;
         }
 
         private void HandleSyncCache()

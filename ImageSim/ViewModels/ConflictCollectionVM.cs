@@ -111,9 +111,9 @@ namespace ImageSim.ViewModels
             }
 
             var last = Conflicts.LastOrDefault();
-            if (CurrentConflict != null && last != null && CurrentConflict == last)
+            foreach (var item in Conflicts)
             {
-                CurrentConflict.IsLastConflict = true;
+                item.IsLastConflict = (item == last);
             }
         }
     }
