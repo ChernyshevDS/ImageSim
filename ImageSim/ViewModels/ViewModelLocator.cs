@@ -15,14 +15,14 @@ namespace ImageSim.ViewModels
             if (GalaSoft.MvvmLight.ViewModelBase.IsInDesignModeStatic)
             {
                 SimpleIoc.Default.Register<IFileDataStorage, DummyStorage>();
-                SimpleIoc.Default.Register<IFileRegistry, DummyFileRegistry>();
+                SimpleIoc.Default.Register<IFileService, DummyFileService>();
             }
             else 
             {
                 var blob = Akavache.BlobCache.UserAccount;
                 var storage = new PersistentStorage(blob);
                 SimpleIoc.Default.Register<IFileDataStorage>(() => storage);
-                SimpleIoc.Default.Register<IFileRegistry, FileRegistry>();
+                SimpleIoc.Default.Register<IFileService, FileService>();
             }
 
             SimpleIoc.Default.Register<IDialogCoordinator>(() => DialogCoordinator.Instance);

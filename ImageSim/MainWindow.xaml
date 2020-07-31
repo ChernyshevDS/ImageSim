@@ -27,6 +27,8 @@
                               ToolTipService.Placement="Right" Command="{Binding AddFilesCommand}"/>
                     <MenuItem Header="Add from folder..." ToolTip="Add all files from selected folder to comparison" 
                               ToolTipService.Placement="Right" Command="{Binding AddFromFolderCommand}"/>
+                    <MenuItem Header="Drop all files" ToolTip="Remove all loaded files from comparison"
+                              ToolTipService.Placement="Right" Command="{Binding DropFilesCommand}"/>
                 </mah:DropDownButton.Items>
             </mah:DropDownButton>
             <mah:DropDownButton Content="Tools">

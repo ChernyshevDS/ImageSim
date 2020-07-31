@@ -28,6 +28,7 @@ namespace ImageSim.ViewModels
 {
     public class MainVM : ViewModelBase
     {
+        private readonly IFileService FileService;
         private readonly IFileDataStorage FileStorage;
         private readonly FileListVM FilesVM;
         private readonly IDialogCoordinator DialogService;
@@ -35,6 +36,7 @@ namespace ImageSim.ViewModels
         private bool hasLoadedFiles;
         private RelayCommand addFromFolderCmd;
         private RelayCommand addFilesCmd;
+        private RelayCommand dropFilesCommand;
 
         private RelayCommand compareHashesCommand;
         private RelayCommand checkSimilarDCTCmd;
@@ -44,7 +46,8 @@ namespace ImageSim.ViewModels
 
         public RelayCommand AddFromFolderCommand => addFromFolderCmd ??= new RelayCommand(HandleAddFromFolder);
         public RelayCommand AddFilesCommand => addFilesCmd ??= new RelayCommand(HandleAddFiles);
-        
+        public RelayCommand DropFilesCommand => dropFilesCommand ??= new RelayCommand(DropAllFiles);
+
         public RelayCommand CompareHashesCommand => compareHashesCommand ??= new RelayCommand(HandleCompareHashes);
         public RelayCommand CheckSimilarDCTCommand => checkSimilarDCTCmd ??= new RelayCommand(HandleCompareDCTImageHashes);
         public RelayCommand ClearCacheCommand => clearCacheCmd ??= new RelayCommand(async () => await FileStorage.Invalidate());
@@ -56,9 +59,10 @@ namespace ImageSim.ViewModels
 
         public ObservableCollection<TabVM> Tabs { get; }
 
-        public MainVM(FileListVM fileList, IFileDataStorage storage, IDialogCoordinator dial)
+        public MainVM(IFileService fileService, FileListVM fileList, IFileDataStorage storage, IDialogCoordinator dial)
         {
             FileStorage = storage;
+            FileService = fileService;
             FilesVM = fileList;
             DialogService = dial;
 
@@ -102,28 +106,58 @@ namespace ImageSim.ViewModels
 
             if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
-                var ctrl = await DialogService.ShowProgressAsync(this, "Adding files...", "Added 0 files");
-                ctrl.SetIndeterminate();
-                var registry = new FileRegistry();
-                var files = registry.GetFilesAsync(dlg.SelectedPath, x => true);
-                var added = 0;
-                await foreach (var file in files)
-                {
-                    await FilesVM.AddFileAsync(file);
-                    ctrl.SetMessage($"Added {++added} files");
-                }
-
-                await ctrl.CloseAsync();
-                //FilesVM.AddFolder(dlg.SelectedPath);
+                var files = FileService.EnumerateDirectory(dlg.SelectedPath, x => true);
+                await AddFilesWithDialog(files);
             }
         }
 
-        private void HandleAddFiles()
+        private async void HandleAddFiles()
         {
             var dlg = new OpenFileDialog() { Multiselect = true };
             if ((bool)dlg.ShowDialog())
             {
-                FilesVM.AddFiles(dlg.FileNames);
+                await AddFilesWithDialog(dlg.FileNames);
+            }
+        }
+
+        private async Task AddFilesWithDialog(IEnumerable<string> files)
+        {
+            var ctrl = await DialogService.ShowProgressAsync(this, "Adding files...", "Added 0 files", true);
+            ctrl.SetIndeterminate();
+
+            var ch = System.Threading.Channels.Channel.CreateUnbounded<string>();
+            var producer = Task.Run(() => {
+                foreach (var file in files)
+                {
+                    if (ctrl.IsCanceled)
+                        break;
+                    ch.Writer.WriteAsync(file);
+                }
+                ch.Writer.Complete();
+            });
+
+            await Task.Yield();
+            var added = 0;
+            await foreach (var item in ch.Reader.ReadAllAsync())
+            {
+                FilesVM.AddFile(item);
+                ctrl.SetMessage($"Added {++added} files");
+            }
+
+            if (ctrl.IsCanceled)
+            {
+                FilesVM.Clear();
+            }
+
+            await ctrl.CloseAsync();
+        }
+
+        private void DropAllFiles()
+        {
+            FilesVM.Clear();
+            foreach (var tab in Tabs.Where(x => x.CanCloseTab))
+            {
+                tab.CloseTabCommand.Execute(null);
             }
         }
 
@@ -338,8 +372,7 @@ namespace ImageSim.ViewModels
 
     public class FileListVM : ViewModelBase
     {
-        private readonly IFileRegistry FileRegistry;
-        private readonly IDialogCoordinator DialogService;
+        private readonly IFileService FileService;
         private readonly ObservableCollection<string> Files = new ObservableCollection<string>();
         
         private RelayCommand<string> deleteFileCommand;
@@ -366,10 +399,9 @@ namespace ImageSim.ViewModels
 
         public ViewModelBase FileDetailsVM { get => fileDetailsVM; set => Set(ref fileDetailsVM, value); }
 
-        public FileListVM(IFileRegistry images, IDialogCoordinator dial)
+        public FileListVM(IFileService files)
         {
-            this.FileRegistry = images;
-            this.DialogService = dial;
+            this.FileService = files;
             LocatedFiles = new ReadOnlyObservableCollection<string>(Files);
 
             if (IsInDesignMode)
@@ -419,7 +451,7 @@ namespace ImageSim.ViewModels
             ExcludeFile(obj);
             try
             {
-                FileRegistry.DeleteFileToBin(obj);
+                FileService.DeleteFileToBin(obj);
             }
             catch (IOException ex)
             {
@@ -429,55 +461,16 @@ namespace ImageSim.ViewModels
 
         public bool AddFile(string path)
         {
-            if (Files.Any(x => x == path))
+            if (Files.Contains(path))
                 return false;
             Files.Add(path);
             return true;
         }
 
-        public async Task<bool> AddFileAsync(string path)
+        public void Clear()
         {
-            var hasFile = await Task.Run(() => Files.Contains(path));
-            if(!hasFile)
-            {
-                Files.Add(path);
-            }
-            return !hasFile;
-        }
-
-        public int AddFiles(IEnumerable<string> paths)
-        {
-            var added = 0;
-            foreach (var file in paths)
-            {
-                if(AddFile(file))
-                    added++;
-            }
-            return added;
-        }
-
-        public async void AddFolder(string path)
-        {
-            /*var result = ProgressWindow.RunTaskAsync(async (progress, token) => {
-
-                return await Task.Run(() => {
-                    int added = 0;
-                    var registry = (FileRegistry)FileRegistry;
-                    foreach (var file in registry.GetFiles(path, x => true))
-                    {
-                        if (Files.Any(x => x == file))
-                            continue;
-
-                        App.Current.Dispatcher.BeginInvoke((Action)delegate { Files.Add(file); });
-                        
-                        added++;
-                        progress.Report(new ProgressArgs($"Added {added} files", null));
-                    }
-                    return added;
-                });
-                
-            }, "Adding files...", false);*/
-            
+            this.Files.Clear();
+            Messenger.Default.Send(new FileListResetMessage());
         }
     }
 

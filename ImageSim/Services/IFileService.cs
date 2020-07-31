@@ -7,9 +7,9 @@ using System.Threading;
 
 namespace ImageSim.Services
 {
-    public interface IFileRegistry
+    public interface IFileService
     {
-        IAsyncEnumerable<string> GetFilesAsync(string folder, Predicate<string> filter, CancellationToken token = default);
+        IEnumerable<string> EnumerateDirectory(string folder, Predicate<string> filter);
         void DeleteFileToBin(string path);
     }
 }
