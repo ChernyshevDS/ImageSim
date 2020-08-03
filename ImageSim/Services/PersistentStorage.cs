@@ -44,11 +44,17 @@ namespace ImageSim.Services
         }
     }
 
+    public interface IBinarySerializable
+    {
+        byte[] Serialize();
+        void Deserialize(byte[] data);
+    }
+
     public class PersistentFileRecord
     {
         public string FilePath { get; set; }
         public DateTime? Modified { get; set; }
-        public Dictionary<string, object> Data { get; set; }
+        public Dictionary<string, byte[]> Data { get; set; }
 
         public PersistentFileRecord()
         {
@@ -80,18 +86,19 @@ namespace ImageSim.Services
             Data?.Remove(key);
         }
 
-        public void SetData<T>(string key, T data)
+        public void SetData<T>(string key, T data) where T : IBinarySerializable
         {
             if (Data == null)
-                Data = new Dictionary<string, object>();
-            Data[key] = data;
+                Data = new Dictionary<string, byte[]>();
+            Data[key] = data.Serialize();
         }
 
-        public bool TryGetData<T>(string key, out T value)
+        public bool TryGetData<T>(string key, out T value) where T : IBinarySerializable, new()
         {
-            if (Data != null && Data.TryGetValue(key, out object data))
+            if (Data != null && Data.TryGetValue(key, out byte[] data))
             {
-                value = (T)data;
+                value = new T();
+                value.Deserialize(data);
                 return true;
             }
             else

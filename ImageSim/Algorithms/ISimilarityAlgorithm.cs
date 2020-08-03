@@ -2,7 +2,9 @@
 using ImageSim.ViewModels;
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Windows;
 using System.Windows.Navigation;
@@ -21,21 +23,6 @@ namespace ImageSim.Algorithms
         double GetSimilarity(TFeature left, TFeature right);
     }
 
-    //class Foo
-    //{
-    //    void Bar()
-    //    {
-    //        var alg = new DCTImageSimilarityAlgorithm();
-    //        alg.Options.ClampSize = new Size(512, 512);
-
-    //        var storage = new PersistentStorage(BlobCache.LocalMachine);
-
-    //        var sim = alg.WithPersistentCache(storage);
-            
-            
-    //    }
-    //}
-
     public interface ICacheService<TFeature> : IReadOnlyCollection<KeyValuePair<string, TFeature>>
     {
         bool TryGetValue(string key, out TFeature value);
@@ -45,12 +32,12 @@ namespace ImageSim.Algorithms
 
     public class RamCacheService<T> : ICacheService<T>
     {
-        private readonly Dictionary<string, T> cache = new Dictionary<string, T>();
+        private readonly ConcurrentDictionary<string, T> cache = new ConcurrentDictionary<string, T>();
 
         public int Count => cache.Count;
 
-        public virtual void Add(string key, T feature) => cache.Add(key, feature);
-        public virtual bool Remove(string key) => cache.Remove(key);
+        public virtual void Add(string key, T feature) => cache.TryAdd(key, feature);
+        public virtual bool Remove(string key) => cache.TryRemove(key, out _);
         public virtual bool TryGetValue(string key, out T value) => cache.TryGetValue(key, out value);
 
         public IEnumerator<KeyValuePair<string, T>> GetEnumerator() => cache.GetEnumerator();
@@ -66,13 +53,14 @@ namespace ImageSim.Algorithms
         }
 
         public static ISimilarityAlgorithm WithPersistentCache<T>(this IHashingAlgorithm<T> alg, IFileDataStorage storage)
+            where T : IBinarySerializable, new()
         {
             var cache = new PersistentCacheService<T>(storage, alg.Name);
             return new CachingSimilarityAlgorithm<T>(cache, alg);
         }
     }
 
-    public class PersistentCacheService<T> : RamCacheService<T>
+    public class PersistentCacheService<T> : RamCacheService<T> where T : IBinarySerializable, new()
     {
         private readonly IFileDataStorage storage;
         private readonly string dataKey;
@@ -158,29 +146,54 @@ namespace ImageSim.Algorithms
         }
     }
 
-    public class MD5FileSimilarityAlgorithm : IHashingAlgorithm<string>
+    public class AbstractSerializableDescriptor : IBinarySerializable
     {
-        public string Name => "MD5Hash";
+        public byte[] Data { get; protected set; }
 
-        public string GetDescriptor(string path)
-        {
-            return Utils.GetFileHash(path);
-        }
+        protected AbstractSerializableDescriptor() { }
 
-        public double GetSimilarity(string left, string right)
-        {
-            return string.Equals(left, right, StringComparison.InvariantCultureIgnoreCase) ? 1 : 0;
-        }
-    }
-
-    public class DCTImageDescriptor
-    {
-        public DCTImageDescriptor(ulong data)
+        protected AbstractSerializableDescriptor(byte[] data)
         {
             Data = data;
         }
 
-        public ulong Data { get; }
+        protected bool DataEquals(in AbstractSerializableDescriptor other)
+        {
+            if (this.Data == null || other == null || other.Data == null)
+                return false;
+            return this.Data.AsSpan().SequenceEqual(other.Data);
+        }
+
+        public virtual void Deserialize(byte[] data) => Data = data;
+        public virtual byte[] Serialize() => Data;
+    }
+
+    public class MD5HashDescriptor : AbstractSerializableDescriptor, IEquatable<MD5HashDescriptor>
+    {
+        public MD5HashDescriptor() { }
+        public MD5HashDescriptor(byte[] hash) : base(hash) { }
+        public bool Equals([AllowNull] MD5HashDescriptor other) => this.DataEquals(other);
+    }
+
+    public class MD5FileSimilarityAlgorithm : IHashingAlgorithm<MD5HashDescriptor>
+    {
+        public string Name => "MD5Hash";
+
+        public MD5HashDescriptor GetDescriptor(string path)
+        {
+            return new MD5HashDescriptor(Utils.GetFileHash(path));
+        }
+
+        public double GetSimilarity(MD5HashDescriptor left, MD5HashDescriptor right)
+        {
+            return left.Equals(right) ? 1 : 0;
+        }
+    }
+
+    public class DCTImageDescriptor : AbstractSerializableDescriptor
+    {
+        public DCTImageDescriptor() { }
+        public DCTImageDescriptor(byte[] data) : base(data) { }
     }
 
     public class DCTImageSimilarityAlgorithm : IHashingAlgorithm<DCTImageDescriptor>
@@ -197,23 +210,24 @@ namespace ImageSim.Algorithms
         public DCTImageDescriptor GetDescriptor(string path)
         {
             var hash = PHash.DCT.GetImageHash(path, (int)Options.ClampSize.Width, (int)Options.ClampSize.Height);
-            return new DCTImageDescriptor(hash);
+            var hashData = BitConverter.GetBytes(hash);
+            return new DCTImageDescriptor(hashData);
         }
 
         public double GetSimilarity(DCTImageDescriptor left, DCTImageDescriptor right)
         {
-            return PHash.DCT.HammingDistance(left.Data, right.Data);
+            const double max_distance = 64;
+            var hashA = BitConverter.ToUInt64(left.Data);
+            var hashB = BitConverter.ToUInt64(right.Data);
+            var distance = PHash.DCT.HammingDistance(hashA, hashB);
+            return 1.0 - (distance / max_distance);
         }
     }
 
-    public class MarrImageDescriptor
+    public class MarrImageDescriptor : AbstractSerializableDescriptor
     {
-        public MarrImageDescriptor(byte[] data)
-        {
-            Data = data;
-        }
-
-        public byte[] Data { get; }
+        public MarrImageDescriptor() { }
+        public MarrImageDescriptor(byte[] data) : base(data) { }
     }
 
     public class MarrImageSimilarityAlgorithm : IHashingAlgorithm<MarrImageDescriptor>
@@ -236,8 +250,9 @@ namespace ImageSim.Algorithms
 
         public double GetSimilarity(MarrImageDescriptor left, MarrImageDescriptor right)
         {
-            var sim = PHash.Marr.HammingDistance(left.Data, right.Data);
-            return sim;
+            var distance = PHash.Marr.HammingDistance(left.Data, right.Data);
+            System.Diagnostics.Debug.Assert(distance >= 0 && distance <= 1.0);
+            return 1.0 - distance;
         }
     }
 }

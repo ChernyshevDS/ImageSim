@@ -6,18 +6,18 @@ namespace ImageSim.ViewModels
 {
     public static class Utils
     {
-        public static string GetFileHash(string path)
+        public static byte[] GetFileHash(string path)
         {
             System.Threading.Thread.Sleep(300); //FIXME
+            #warning Intentional slow down for debug purposes
             using var fs = File.OpenRead(path);
             var alg = System.Security.Cryptography.MD5.Create();
-            var hash = alg.ComputeHash(fs);
-            return BitConverter.ToString(hash).Replace("-", string.Empty).ToUpperInvariant();
+            return alg.ComputeHash(fs);
         }
 
-        public static Task<string> GetFileHashAsync(string path)
+        public static string ToHexString(this byte[] data)
         {
-            return Task.Run(() => GetFileHash(path));
+            return BitConverter.ToString(data).Replace("-", string.Empty).ToUpperInvariant();
         }
 
         public static int Clamp(this int val, int min, int max)

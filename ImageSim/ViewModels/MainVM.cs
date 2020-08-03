@@ -136,7 +136,7 @@ namespace ImageSim.ViewModels
             var ctrl = await DialogService.ShowProgressAsync(this, "Adding files...", "Added 0 files", true);
             ctrl.SetIndeterminate();
 
-            var ch = System.Threading.Channels.Channel.CreateUnbounded<string>();
+            var ch = Channel.CreateUnbounded<string>();
             var producer = Task.Run(() =>
             {
                 foreach (var file in files)
@@ -200,14 +200,14 @@ namespace ImageSim.ViewModels
             var thread_count = Utils.GetRecommendedConcurrencyLevel();
 
             var alg = new MD5FileSimilarityAlgorithm();
-            var cache = new PersistentCacheService<string>(FileStorage, alg.Name);
+            var cache = new PersistentCacheService<MD5HashDescriptor>(FileStorage, alg.Name);
 
             var results = await TaskExtensions.ForEachAsync(FilesVM.LocatedFiles, x => Task.Run(() =>
             {
                 if (ctrl.IsCanceled)
                     return false;
 
-                if (!cache.TryGetValue(x, out string hash))
+                if (!cache.TryGetValue(x, out MD5HashDescriptor hash))
                 {
                     hash = alg.GetDescriptor(x);
                     cache.Add(x, hash);
@@ -265,18 +265,23 @@ namespace ImageSim.ViewModels
             }
         }
 
-        private void HandleCompareDCTImageHashes()
-        {
-            var result = ProgressWindow.RunTaskAsync(
-                async (prog, tok) => await Task.Run(() => RunFilesDCTHashingAsync(prog, tok)),
-                "DCT hashing...", true);
+        private async void HandleCompareDCTImageHashes()
+        {           
+            var ctrl = await DialogService.ShowProgressAsync(this, "Matching images...", "Preparing...", true);
+            var algorithm = new DCTImageSimilarityAlgorithm();
+            algorithm.Options.ClampSize = new Size(512, 512);
+            var cachedAlg = algorithm.WithPersistentCache(FileStorage);
+
+            var images = FilesVM.LocatedFiles.Where(x => VMHelper.IsImageExtension(Path.GetExtension(x))).ToList();
+            var result = await BuildConflictsVM(ctrl, images, cachedAlg, 0.75);
+            await ctrl.CloseAsync();
 
             if (result.IsCancelled)
                 return;
 
-            if (result.Result == null || result.Result.Conflicts.Count == 0)
+            if (result.Result == null)
             {
-                MessageBox.Show("No conflicts found!");
+                await DialogService.ShowMessageAsync(this, "Hooray!", "There are no files similar enough!");
                 return;
             }
 
@@ -285,7 +290,7 @@ namespace ImageSim.ViewModels
             CurrentTab = tab;
         }
 
-        private async Task<ConflictCollectionVM> RunFilesDCTHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
+        /*private async Task<ConflictCollectionVM> RunFilesDCTHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
         {
             int processed = 0;
             var total = FilesVM.LocatedFiles.Count;
@@ -300,9 +305,9 @@ namespace ImageSim.ViewModels
                 if (!VMHelper.IsImageExtension(Path.GetExtension(x)))
                     return false;
 
-                /*var data = await GetOrCreateAssociatedFileData(x, DCTImageHashData.Key,
+                var data = await GetOrCreateAssociatedFileData(x, DCTImageHashData.Key,
                     p => new DCTImageHashData() { Hash = PHash.DCT.GetImageHash(p, maxSize) });
-                dict.TryAdd(x, data.Hash);*/
+                dict.TryAdd(x, data.Hash);
                 throw new NotImplementedException();
 
                 var proc = Interlocked.Increment(ref processed);
@@ -336,9 +341,105 @@ namespace ImageSim.ViewModels
                 return null;
 
             return cvm;
+        }*/
+
+        readonly struct SimilarityIdx
+        {
+            internal readonly string Left;
+            internal readonly string Right;
+            internal readonly double Similarity;
+
+            internal SimilarityIdx(string left, string right, double metric)
+            {
+                Left = left;
+                Right = right;
+                Similarity = metric;
+            }
         }
 
-        
+        private async Task<OperationResult<ConflictCollectionVM>> BuildConflictsVM(ProgressDialogController ctrl, 
+            IReadOnlyList<string> paths, ISimilarityAlgorithm similarityAlg, double threshold)
+        {
+            var pairs = EnumeratePairs(paths);
+            var ch = Channel.CreateUnbounded<(string, string)>(new UnboundedChannelOptions() 
+            { 
+                SingleWriter = true, 
+                SingleReader = false 
+            });
+
+            var N = paths.Count - 1;
+            if (N <= 0)
+                throw new ArgumentException("Not enough files provided", nameof(paths));
+            
+            var nPairs = N * (N + 1) / 2;
+            var nProcessed = 0;
+
+            var nReaders = Utils.GetRecommendedConcurrencyLevel();
+            var nTasks = nReaders + 1;
+            var tasks = new Task[nTasks];
+
+            var bag = new ConcurrentBag<SimilarityIdx>();
+
+            for (int i = 0; i < nReaders; i++)
+            {
+                tasks[i] = Task.Run(async () => {
+                    while (await ch.Reader.WaitToReadAsync())
+                    {
+                        var pair = await ch.Reader.ReadAsync();
+                        var metric = similarityAlg.GetSimilarity(pair.Item1, pair.Item2);
+                        bag.Add(new SimilarityIdx(pair.Item1, pair.Item2, metric));
+
+                        var proc = Interlocked.Increment(ref nProcessed);
+                        var progress = (double)proc / nPairs;
+                        ctrl.SetMessage($"Processed {proc} of {nPairs} image pairs");
+                        ctrl.SetProgress(progress);
+                    }
+                });
+            }
+            
+            var producer = Task.Run(() =>
+            {
+                foreach (var pair in pairs)
+                {
+                    if (ctrl.IsCanceled)
+                    {
+                        ch.Writer.Complete();
+                        return;
+                    }
+                    ch.Writer.WriteAsync(pair);
+                }
+                ch.Writer.Complete();
+            });
+            
+            tasks[nTasks - 1] = producer;
+            await Task.WhenAll(tasks);
+
+            if (ctrl.IsCanceled)
+                return new OperationResult<ConflictCollectionVM>(true, null);
+
+            ctrl.SetIndeterminate();
+            ctrl.SetMessage("Sorting results by similarity metric...");
+            var list = bag.ToList();
+            list.Sort((x, y) => Math.Sign(y.Similarity - x.Similarity));    //sort by descending similarity
+            
+            ctrl.SetMessage("Building the view...");
+            var cvm = new ConflictCollectionVM();
+            foreach (var item in list)
+            {
+                if (item.Similarity < threshold)
+                    break;  //as list is sorted, may break here
+
+                cvm.Conflicts.Add(new ImageDCTConflictVM(item.Left, item.Right)
+                {
+                    SimilarityMetric = item.Similarity
+                });
+            }
+
+            if (cvm.Conflicts.Count == 0)
+                return new OperationResult<ConflictCollectionVM>(false, null);
+            else
+                return new OperationResult<ConflictCollectionVM>(false, cvm);
+        }
 
         private void HandleSyncCache()
         {
@@ -687,17 +788,29 @@ namespace ImageSim.ViewModels
     public class ImageDCTConflictVM : ConflictVM
     {
         private RelayCommand<ImageDetailsVM> keepImageCommand;
-        private ImageDetailsVM firstImage;
-        private ImageDetailsVM secondImage;
+        private Lazy<ImageDetailsVM> firstImage;
+        private Lazy<ImageDetailsVM> secondImage;
+        private double similarityMetric;
 
-        public ImageDetailsVM FirstImage { get => firstImage; set => Set(ref firstImage, value); }
-        public ImageDetailsVM SecondImage { get => secondImage; set => Set(ref secondImage, value); }
-        public RelayCommand<ImageDetailsVM> KeepImageCommand => keepImageCommand 
+        public double SimilarityMetric { get => similarityMetric; set => Set(ref similarityMetric, value); }
+        public ImageDetailsVM FirstImage 
+        { 
+            get => firstImage.Value; 
+        }
+        public ImageDetailsVM SecondImage 
+        { 
+            get => secondImage.Value; 
+        }
+        public RelayCommand<ImageDetailsVM> KeepImageCommand => keepImageCommand
             ??= new RelayCommand<ImageDetailsVM>(HandleKeepImage);
 
-        public ImageDCTConflictVM()
+        public ImageDCTConflictVM(string firstPath, string secondPath)
         {
-            Messenger.Default.Register<FileRemovedMessage>(this, msg => {
+            firstImage = new Lazy<ImageDetailsVM>(() => CreateDetails(firstPath));
+            secondImage = new Lazy<ImageDetailsVM>(() => CreateDetails(secondPath));
+
+            Messenger.Default.Register<FileRemovedMessage>(this, msg =>
+            {
                 if (msg.Path == FirstImage.FilePath || msg.Path == SecondImage.FilePath)
                 {
                     MarkAsResolved();
@@ -705,10 +818,13 @@ namespace ImageSim.ViewModels
             });
         }
 
+        private ImageDetailsVM CreateDetails(string path) => 
+            (ImageDetailsVM)VMHelper.GetDetailsVMByPath(path);
+
         private void HandleKeepImage(ImageDetailsVM obj)
         {
-            var toDelete = obj.FilePath == FirstImage.FilePath 
-                ? SecondImage.FilePath 
+            var toDelete = obj.FilePath == FirstImage.FilePath
+                ? SecondImage.FilePath
                 : FirstImage.FilePath;
             Messenger.Default.Send(new FileOperationMessage(toDelete, FileOperation.Delete));
         }

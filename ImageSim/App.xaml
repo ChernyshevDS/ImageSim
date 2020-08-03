@@ -185,7 +185,10 @@
                         <Button Grid.Column="1" Content="{Binding SecondImage}" Margin="4"
                                 Command="{Binding KeepImageCommand}" CommandParameter="{Binding SecondImage}"/>
                     </Grid>
-                
+
+                    <TextBlock Grid.Row="2" HorizontalAlignment="Center" FontSize="16"
+                               Text="{Binding SimilarityMetric, StringFormat='Similarity: {0}'}"/>
+                    
                     <Button Grid.Row="2" Content="Skip" HorizontalAlignment="Right" Margin="10,4"
                             Command="{Binding ResolveCommand}" Style="{StaticResource SkipConflictButtonStyle}"/>
                 </Grid>
