@@ -31,7 +31,7 @@ namespace PHash
             if (src == null)
                 return 0;
 
-            if (clampWidth != 0 && clampHeight != 0)
+            if (clampWidth > 0 && clampHeight > 0)
             {
                 if (src.Width > clampWidth || src.Height > clampHeight)
                 {

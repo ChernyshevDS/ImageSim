@@ -1,10 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-
 using System.Reactive.Linq;
 using Akavache;
 using System.Threading.Tasks;
-using ImageSim.Services.Storage;
+using System;
 
 namespace ImageSim.Services
 {
@@ -42,6 +41,64 @@ namespace ImageSim.Services
         public async Task Invalidate()
         {
             await Cache.InvalidateAll();
+        }
+    }
+
+    public class PersistentFileRecord
+    {
+        public string FilePath { get; set; }
+        public DateTime? Modified { get; set; }
+        public Dictionary<string, object> Data { get; set; }
+
+        public PersistentFileRecord()
+        {
+        }
+
+        public static PersistentFileRecord Create(string path)
+        {
+            return new PersistentFileRecord()
+            {
+                FilePath = path,
+                Modified = ReadModificationTime(path)
+            };
+        }
+
+        public static DateTime? ReadModificationTime(string path)
+        {
+            try
+            {
+                return System.IO.File.GetLastWriteTimeUtc(path);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        public void RemoveData(string key)
+        {
+            Data?.Remove(key);
+        }
+
+        public void SetData<T>(string key, T data)
+        {
+            if (Data == null)
+                Data = new Dictionary<string, object>();
+            Data[key] = data;
+        }
+
+        public bool TryGetData<T>(string key, out T value)
+        {
+            if (Data != null && Data.TryGetValue(key, out object data))
+            {
+                value = (T)data;
+                return true;
+            }
+            else
+            {
+                value = default;
+                return false;
+            }
         }
     }
 
