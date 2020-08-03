@@ -36,7 +36,9 @@
                     <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
                     <MenuItem Header="Find similar images (DCT)" Command="{Binding CheckSimilarDCTCommand}"/>
                     <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"/>
-                    <MenuItem Header="Sync cache" Command="{Binding SyncCacheCommand}"/>
+                    <MenuItem Header="Shrink cache" Command="{Binding SyncCacheCommand}" 
+                              ToolTipService.Placement="Right" ToolTip="Remove cache records for files not listed 
+                              in currently loaded list or non-existent or modified files"/>
                 </mah:DropDownButton.Items>
             </mah:DropDownButton>
         </mah:WindowCommands>

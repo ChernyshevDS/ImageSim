@@ -1,9 +1,9 @@
 ﻿using GalaSoft.MvvmLight;
 using GalaSoft.MvvmLight.Command;
 using GalaSoft.MvvmLight.Messaging;
+using ImageSim.Algorithms;
 using ImageSim.Messages;
 using ImageSim.Services;
-using ImageSim.Services.Storage;
 using MahApps.Metro.Controls.Dialogs;
 using Microsoft.Win32;
 using System;
@@ -16,9 +16,11 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -197,15 +199,19 @@ namespace ImageSim.ViewModels
             var total = FilesVM.LocatedFiles.Count;
             var thread_count = Utils.GetRecommendedConcurrencyLevel();
 
-            var hashDict = new ConcurrentDictionary<string, string>(thread_count, total);
+            var alg = new MD5FileSimilarityAlgorithm();
+            var cache = new PersistentCacheService<string>(FileStorage, alg.Name);
+
             var results = await TaskExtensions.ForEachAsync(FilesVM.LocatedFiles, x => Task.Run(() =>
             {
                 if (ctrl.IsCanceled)
                     return false;
 
-                var data = GetOrCreateAssociatedFileData(x, HashData.Key,
-                    p => new HashData() { Hash = Utils.GetFileHash(p) }).Result;
-                hashDict.TryAdd(x, data.Hash);
+                if (!cache.TryGetValue(x, out string hash))
+                {
+                    hash = alg.GetDescriptor(x);
+                    cache.Add(x, hash);
+                }
 
                 var proc = Interlocked.Increment(ref processed);
 
@@ -224,7 +230,7 @@ namespace ImageSim.ViewModels
             ctrl.SetIndeterminate();
             ctrl.SetMessage("Searching for hash conflicts...");
 
-            var groups = hashDict
+            var groups = cache
                 .GroupBy(x => x.Value)
                 .Where(x => x.Count() > 1)
                 .ToList();
@@ -245,6 +251,18 @@ namespace ImageSim.ViewModels
 
             await ctrl.CloseAsync();
             return new OperationResult<ConflictCollectionVM>(false, coll);
+        }
+
+        private IEnumerable<(T, T)> EnumeratePairs<T>(IReadOnlyList<T> source)
+        {
+            var len = source.Count;
+            for (int i = 0; i < len - 1; i++)
+            {
+                for (int j = i + 1; j < len; j++)
+                {
+                    yield return (source[i], source[j]);
+                }
+            }
         }
 
         private void HandleCompareDCTImageHashes()
@@ -282,9 +300,10 @@ namespace ImageSim.ViewModels
                 if (!VMHelper.IsImageExtension(Path.GetExtension(x)))
                     return false;
 
-                var data = await GetOrCreateAssociatedFileData(x, DCTImageHashData.Key,
+                /*var data = await GetOrCreateAssociatedFileData(x, DCTImageHashData.Key,
                     p => new DCTImageHashData() { Hash = PHash.DCT.GetImageHash(p, maxSize) });
-                dict.TryAdd(x, data.Hash);
+                dict.TryAdd(x, data.Hash);*/
+                throw new NotImplementedException();
 
                 var proc = Interlocked.Increment(ref processed);
                 progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
@@ -319,49 +338,7 @@ namespace ImageSim.ViewModels
             return cvm;
         }
 
-        private async Task<T> GetOrCreateAssociatedFileData<T>(string path, string key, Func<string, T> generator) where T : IFileRecordData, new()
-        {
-            var needCacheUpdate = false;
-            var cachedRecord = await FileStorage.GetFileRecordAsync(path);
-            if (cachedRecord == null)   //no cache record found
-                cachedRecord = PersistentFileRecord.Create(path);
-
-            T filedata = default;
-            var time = PersistentFileRecord.ReadModificationTime(path);
-            if (time.HasValue)
-            {
-                if (cachedRecord.Modified == time)   //cached record is valid - file hasn't been changed
-                {
-                    if (cachedRecord.TryGetData<T>(key, out T data))   //success - use cached value
-                    {
-                        filedata = data;
-                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: loaded from cache");
-                    }
-                    else    //no cached Hash
-                    {
-                        filedata = generator(path);
-                        //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: no cached hash, calculated");
-                        needCacheUpdate = true;
-                    }
-                }
-                else    //cached value expired
-                {
-                    await FileStorage.RemoveFileRecordAsync(path);
-                    filedata = generator(path);
-                    //System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: file modified, hash calculated");
-                    needCacheUpdate = true;
-                }
-            } // else current file can't be read - skip
-
-            if (needCacheUpdate)
-            {
-                cachedRecord.SetData(filedata);
-                await FileStorage.UpdateFileRecordAsync(path, cachedRecord);
-                System.Diagnostics.Debug.WriteLine($"{Path.GetFileName(path)}: cache updated");
-            }
-
-            return filedata;
-        }
+        
 
         private void HandleSyncCache()
         {
@@ -412,9 +389,10 @@ namespace ImageSim.ViewModels
             {
                 token.ThrowIfCancellationRequested();
 
-                var data = await GetOrCreateAssociatedFileData(x, HashData.Key,
+                /*var data = await GetOrCreateAssociatedFileData(x, HashData.Key,
                     p => new HashData() { Hash = Utils.GetFileHash(p) });
-                hashDict.TryAdd(x, data.Hash);
+                hashDict.TryAdd(x, data.Hash);*/
+                throw new NotImplementedException();
 
                 var proc = Interlocked.Increment(ref processed);
                 progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));

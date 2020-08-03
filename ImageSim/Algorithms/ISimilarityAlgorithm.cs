@@ -1,9 +1,11 @@
 ﻿using ImageSim.Services;
 using ImageSim.ViewModels;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using System.Windows;
+using System.Windows.Navigation;
 
 namespace ImageSim.Algorithms
 {
@@ -19,65 +21,109 @@ namespace ImageSim.Algorithms
         double GetSimilarity(TFeature left, TFeature right);
     }
 
-    class Foo
-    {
-        void Bar()
-        {
-            var alg = new DCTImageSimilarityAlgorithm();
-            alg.Options.ClampSize = new Size(512, 512);
+    //class Foo
+    //{
+    //    void Bar()
+    //    {
+    //        var alg = new DCTImageSimilarityAlgorithm();
+    //        alg.Options.ClampSize = new Size(512, 512);
 
-            var cacheAlg = new CachingSimilarityAlgorithm<DCTImageDescriptor>(null, alg);
+    //        var storage = new PersistentStorage(BlobCache.LocalMachine);
+
+    //        var sim = alg.WithPersistentCache(storage);
             
-        }
-    }
+            
+    //    }
+    //}
 
-    public interface ICacheService<TFeature>
+    public interface ICacheService<TFeature> : IReadOnlyCollection<KeyValuePair<string, TFeature>>
     {
         bool TryGetValue(string key, out TFeature value);
         void Add(string key, TFeature feature);
+        bool Remove(string key);
     }
 
     public class RamCacheService<T> : ICacheService<T>
     {
         private readonly Dictionary<string, T> cache = new Dictionary<string, T>();
+
+        public int Count => cache.Count;
+
         public virtual void Add(string key, T feature) => cache.Add(key, feature);
+        public virtual bool Remove(string key) => cache.Remove(key);
         public virtual bool TryGetValue(string key, out T value) => cache.TryGetValue(key, out value);
+
+        public IEnumerator<KeyValuePair<string, T>> GetEnumerator() => cache.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    public static class SimilarityAlgorithms
+    {
+        public static ISimilarityAlgorithm WithCache<T>(this IHashingAlgorithm<T> alg)
+        {
+            var ramCache = new RamCacheService<T>();
+            return new CachingSimilarityAlgorithm<T>(ramCache, alg);
+        }
+
+        public static ISimilarityAlgorithm WithPersistentCache<T>(this IHashingAlgorithm<T> alg, IFileDataStorage storage)
+        {
+            var cache = new PersistentCacheService<T>(storage, alg.Name);
+            return new CachingSimilarityAlgorithm<T>(cache, alg);
+        }
     }
 
     public class PersistentCacheService<T> : RamCacheService<T>
     {
         private readonly IFileDataStorage storage;
+        private readonly string dataKey;
 
-        public PersistentCacheService(Services.IFileDataStorage storage)
+        public PersistentCacheService(IFileDataStorage storage, string dataKey)
         {
             this.storage = storage;
+            this.dataKey = dataKey;
         }
         
-        public override void Add(string key, T feature)
+        public override void Add(string path, T feature)
         {
-            var record = storage.GetFileRecordAsync(key);
-            
-            base.Add(key, feature);
+            var cachedRecord = storage.GetFileRecordAsync(path).Result;
+            if (cachedRecord == null)   //no cache record found
+                cachedRecord = PersistentFileRecord.Create(path);
+
+            cachedRecord.SetData(dataKey, feature);
+            storage.UpdateFileRecordAsync(path, cachedRecord).Wait();
+
+            System.Diagnostics.Debug.WriteLine($"{System.IO.Path.GetFileName(path)}: cache updated");
+            base.Add(path, feature);
         }
 
         public override bool TryGetValue(string key, out T value)
         {
-            return base.TryGetValue(key, out value);
+            if (base.TryGetValue(key, out value))   //cache is already loaded
+                return true;
+
+            var cachedRecord = storage.GetFileRecordAsync(key).Result;
+            if (cachedRecord == null)   //no cache record found
+                return false;
+
+            var time = PersistentFileRecord.ReadModificationTime(key);
+            if (!time.HasValue) //current file can't be read - skip
+                return false;
+
+            if (cachedRecord.Modified != time)  //cached value expired
+            {
+                storage.RemoveFileRecordAsync(key).Wait();
+                return false;
+            }
+
+            if (!cachedRecord.TryGetData<T>(dataKey, out T data))   //no cached Hash
+                return false;
+
+            //success - use cached value
+            base.Add(key, data);
+            value = data;
+            return true;
         }
     }
-
-    /*public class PersistentCacheService : ICacheService
-    {
-        public void Add<TFeature>(string path, string key, TFeature feature)
-        {
-            
-        }
-
-        public bool TryGetValue<TFeature>(string path, string key, out TFeature value)
-        {
-            
-        }
-    }*/
 
     public class CachingSimilarityAlgorithm<T> : ISimilarityAlgorithm
     {
