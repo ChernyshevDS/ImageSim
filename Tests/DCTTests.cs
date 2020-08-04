@@ -79,7 +79,7 @@ namespace Tests
                 0.351851f,-0.338329f,0.311806f,-0.273300f,0.224292f,-0.166664f,0.102631f,-0.034654f
             };
 
-            var M = PHash.DCT.ph_dct_matrix(16);
+            var M = PHash.DCT.CreateDCTMatrix(16);
             var indexer = M.GetGenericIndexer<float>();
             var pos = 0;
             for (int y = 0; y < M.Height; y++)

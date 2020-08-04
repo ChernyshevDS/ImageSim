@@ -8,20 +8,8 @@ namespace PHash
 {
     public static class DCT
     {
-        /*private static void print_mat<T>(Mat img) where T : struct
-        {
-            for (int i = 0; i < img.Channels(); ++i)
-            {
-                System.Diagnostics.Debug.WriteLine("Channel {0}:", i);
-                var channel = img.ExtractChannel(i).Reshape(0, 1);
-
-                for (int px = 0; px < channel.Width; px++)
-                {
-                    var channel_i = channel.Get<T>(0, px);
-                    System.Diagnostics.Debug.Write($"{channel_i} ");
-                }
-            }
-        }*/
+        private static readonly Mat DCT_MATRIX_32 = CreateDCTMatrix(32);
+        private static readonly Mat DCT_MATRIX_32_TRANSP = CreateDCTMatrix(32).Transpose();
 
         public static UInt64 GetImageHash(string file, int clampWidth, int clampHeight)
         {
@@ -62,10 +50,10 @@ namespace PHash
             }
 
             img = img.Resize(new Size(32, 32), 0, 0, InterpolationFlags.Nearest);
-            using Mat C = ph_dct_matrix(32);
-            using Mat Ctransp = C.Clone().Transpose();
-            using Mat dctImage = C * img * Ctransp;
-            using Mat subsec = dctImage.SubMat(1, 9, 1, 9).Clone().Reshape(0, 1);
+            Mat C = DCT_MATRIX_32;
+            Mat Ctransp = DCT_MATRIX_32_TRANSP;
+            Mat dctImage = C * img * Ctransp;
+            Mat subsec = dctImage.SubMat(1, 9, 1, 9).Clone().Reshape(0, 1);
 
             float median = GetMedianValue(subsec);
             UInt64 one = 0x0000000000000001;
@@ -93,7 +81,7 @@ namespace PHash
             return (s % 2 != 0) ? res : ((res + Utils.NthOrderStatistic(tmp, (s >> 1) - 1)) / 2f);
         }
 
-        internal static Mat ph_dct_matrix(int N) {
+        internal static Mat CreateDCTMatrix(int N) {
             var ptr_matrix = new Mat(N, N, MatType.CV_32FC1, new Scalar(1 / Math.Sqrt(N)));
             float c1 = (float)Math.Sqrt(2.0 / N);
 

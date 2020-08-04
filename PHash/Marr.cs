@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using OpenCvSharp;
 
+[assembly: InternalsVisibleTo("Tests")]
 namespace PHash
 {
     public static class Marr
     {
-        //uint8_t* ph_mh_imagehash(const char* filename, int &N, float alpha = 2.0f, float lvl = 1.0f);
         public static byte[] GetImageHash(string filename, float alpha = 2.0f, float lvl = 1.0f)
         {
             if (string.IsNullOrEmpty(filename))
@@ -15,58 +16,42 @@ namespace PHash
                 return null;
             }
 
-            var hash = new byte[72];
             using var fs = new System.IO.FileStream(filename, System.IO.FileMode.Open, System.IO.FileAccess.Read);
             using var src = Mat.FromStream(fs, ImreadModes.Color);
 
             Mat img = null;
             if (src.Channels() == 3)
             {
-                /*img = tmp.blur(1.0)
-                          .resize(512, 512, 1, 1, 5)
-                          .get_equalize(256);*/
-
                 var tmp = Utils.GetBrightnessComponent(src);
                 Cv2.GaussianBlur(tmp, tmp, Size.Zero, 1.0, 1.0, BorderTypes.Replicate);
                 tmp = tmp.Resize(new Size(512, 512), 0, 0, InterpolationFlags.Cubic);
-                Cv2.EqualizeHist(tmp, img);
+                Cv2.EqualizeHist(tmp, tmp);
+                img = tmp;
             }
             else
             {
-                /*img = src.channel(0)
-                          .blur(1.0)
-                          .resize(512, 512, 1, 1, 5)
-                          .get_equalize(256);*/
                 var tmp = src.ExtractChannel(0);
                 Cv2.GaussianBlur(tmp, tmp, Size.Zero, 1.0, 1.0, BorderTypes.Replicate);
                 tmp = tmp.Resize(new Size(512, 512), 0, 0, InterpolationFlags.Cubic);
-                Cv2.EqualizeHist(tmp, img);
+                Cv2.EqualizeHist(tmp, tmp);
+                img = tmp;
             }
-            //src.clear();
-
-            //CImg<float>* pMHKernel = GetMHKernel(alpha, lvl);
             var pMHKernel = GetMHKernel(alpha, lvl);
 
-            //CImg<float> fresp = img.get_correlate(*pMHKernel);
-            Mat fresp = null;
+            var img_f = new Mat<float>(img.Size());
+            img.ConvertTo(img_f, img_f.Type(), 1 / 255.0);
+
+            var fresp = new Mat(img.Size(), MatType.CV_32FC1);
             Cv2.Filter2D(img, fresp, MatType.CV_32FC1, pMHKernel, null, 0, BorderTypes.Replicate);
 
-            //img.clear();
-            //fresp.normalize(0, 1.0);
-            fresp = fresp.Normalize();
+            fresp = fresp.Normalize(0, 1, NormTypes.MinMax);
 
-            //CImg<float> blocks(31, 31, 1, 1, 0);
-            Mat blocks = new Mat(31, 31, MatType.CV_32FC1, new Scalar(0));
-            var blocks_i = blocks.GetGenericIndexer<float>();
+            var blocks = new Mat<float>(31, 31, new Scalar(0));
+            var blocks_i = blocks.GetIndexer();
             for (int rindex = 0; rindex < 31; rindex++)
             {
                 for (int cindex = 0; cindex < 31; cindex++)
                 {
-                    /*blocks(rindex, cindex) =
-                        fresp.get_crop(rindex * 16, cindex * 16, 
-                            rindex * 16 + 16 - 1,
-                            cindex * 16 + 16 - 1)
-                            .sum();*/
                     var x0 = rindex * 16;
                     var y0 = cindex * 16;
                     var x1 = rindex * 16 + 16 - 1;
@@ -75,24 +60,27 @@ namespace PHash
                 }
             }
 
+            return BuildHash(blocks);
+        }
+
+        internal static byte[] BuildHash(Mat<float> blocks)
+        {
+            var hash = new byte[72];
             int hash_index;
             int nb_ones = 0, nb_zeros = 0;
             int bit_index = 0;
             byte hashbyte = 0;
             for (int rindex = 0; rindex < 31 - 2; rindex += 4)
             {
-                //CImg<float> subsec;
-                Mat subsec;
                 for (int cindex = 0; cindex < 31 - 2; cindex += 4)
                 {
-                    //subsec = blocks.get_crop(cindex, rindex, cindex + 2, rindex + 2).unroll('x');
-                    subsec = blocks.SubMat(rindex, cindex, rindex + 3, cindex + 3).Clone().Reshape(0, 1);
-                    //float ave = subsec.mean();
-                    var ave = (float)subsec.Mean().Val0;
-                    //cimg_forX(subsec, I) {
+                    Mat subsec = blocks.SubMat(rindex, rindex + 3, cindex, cindex + 3);
+                    subsec = subsec.Clone();
+                    subsec = subsec.Reshape(0, 1);
+                    var ave = subsec.Mean().Val0;
                     var subsec_i = subsec.GetGenericIndexer<float>();
-                    for(var I = 0; I < subsec.Height; I++) 
-                    { 
+                    for (var I = 0; I < subsec.Width; I++)
+                    {
                         hashbyte <<= 1;
                         if (subsec_i[0, I] > ave)
                         {
@@ -116,7 +104,6 @@ namespace PHash
             return hash;
         }
 
-        //double ph_hammingdistance2(byte[] hashA, int lenA, byte[] hashB, int lenB)
         public static double HammingDistance(byte[] hashA, byte[] hashB)
         {
             int lenA = hashA.Length;
@@ -134,32 +121,24 @@ namespace PHash
             for (int i = 0; i < lenA; i++)
             {
                 D = (byte)(hashA[i] ^ hashB[i]);
-                dist += ph_bitcount8(D);
+                dist += CountBits(D);
             }
             double bits = (double)lenA * 8;
             return dist / bits;
         }
 
-        //CImg<float>* GetMHKernel(float alpha, float level)
-        internal static Mat GetMHKernel(float alpha, float level)
+        internal static Mat<float> GetMHKernel(float alpha, float level)
         {
             int sigma = (int)(4 * MathF.Pow(alpha, level));
             float xpos, ypos, A;
 
             var size = 2 * sigma + 1;
-            //var pkernel = new CImg<float>(2 * sigma + 1, 2 * sigma + 1, 1, 1, 0);
-            var pkernel = new Mat(size, size, MatType.CV_32FC1, new Scalar(0));
+            var pkernel = new Mat<float>(size, size, new Scalar(0));
 
-            /*cimg_forXY(*pkernel, X, Y) {
-                xpos = pow((float)alpha, (float)-level) * (X - sigma);
-                ypos = pow((float)alpha, (float)-level) * (Y - sigma);
-                A = xpos * xpos + ypos * ypos;
-                pkernel->atXY(X, Y) = (2 - A) * exp(-A / 2);
-            }*/
-            var indexer = pkernel.GetGenericIndexer<float>();
+            var indexer = pkernel.GetIndexer();
             for (int x = 0; x < size; x++)
             {
-                for (int y = 1; y < size; y++)
+                for (int y = 0; y < size; y++)
                 {
                     xpos = MathF.Pow(alpha, -level) * (x - sigma);
                     ypos = MathF.Pow((float)alpha, (float)-level) * (y - sigma);
@@ -171,7 +150,7 @@ namespace PHash
             return pkernel;
         }
 
-        private static int ph_bitcount8(byte val)
+        internal static int CountBits(byte val)
         {
             int num = 0;
             while (val != 0)

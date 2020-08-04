@@ -113,5 +113,31 @@ namespace PHash
             }
             return result;
         }
+
+        internal static void print_mat<T>(Mat img) where T : struct
+        {
+            for (int i = 0; i < img.Channels(); ++i)
+            {
+                System.Diagnostics.Debug.WriteLine("Channel {0}:", i);
+                var channel = img.ExtractChannel(i).Reshape(0, 1);
+
+                for (int px = 0; px < channel.Width; px++)
+                {
+                    var channel_i = channel.Get<T>(0, px);
+                    System.Diagnostics.Debug.Write($"{channel_i} ");
+                }
+            }
+        }
+
+        internal static void show_mat<T>(Mat img) where T : struct
+        {
+            Cv2.NamedWindow("tempwin", WindowMode.KeepRatio);
+            Cv2.SetMouseCallback("tempwin", (MouseEventTypes ev, int x, int y, MouseEventFlags flags, IntPtr userData) => {
+                if (ev == MouseEventTypes.LButtonUp)
+                    System.Diagnostics.Debug.WriteLine($"Val={img.Get<T>(y, x)}");
+            });
+            Cv2.ImShow("tempwin", img);
+            Cv2.WaitKey(0);
+        }
     }
 }
