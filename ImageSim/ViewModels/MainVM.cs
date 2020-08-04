@@ -50,10 +50,10 @@ namespace ImageSim.ViewModels
         public RelayCommand AddFilesCommand => addFilesCmd ??= new RelayCommand(HandleAddFiles);
         public RelayCommand DropFilesCommand => dropFilesCommand ??= new RelayCommand(DropAllFiles);
 
-        public RelayCommand CompareHashesCommand => compareHashesCommand ??= new RelayCommand(HandleCompareHashes);
-        public RelayCommand CheckSimilarDCTCommand => checkSimilarDCTCmd ??= new RelayCommand(HandleCompareDCTImageHashes);
+        public RelayCommand CompareHashesCommand => compareHashesCommand ??= new RelayCommand(HandleCompareHashes, HasFiles);
+        public RelayCommand CheckSimilarDCTCommand => checkSimilarDCTCmd ??= new RelayCommand(HandleCompareDCTImageHashes, HasFiles);
         public RelayCommand ClearCacheCommand => clearCacheCmd ??= new RelayCommand(async () => await FileStorage.Invalidate());
-        public RelayCommand SyncCacheCommand => syncCacheCmd ??= new RelayCommand(HandleSyncCache);
+        public RelayCommand SyncCacheCommand => syncCacheCmd ??= new RelayCommand(HandleSyncCache, HasFiles);
 
         public RelayCommand<Uri> OpenLinkCommand => openLinkCmd ??= new RelayCommand<Uri>(OpenLink);
 
@@ -83,6 +83,7 @@ namespace ImageSim.ViewModels
                 if (e.PropertyName == "Count")
                 {
                     HasLoadedFiles = (FilesVM.LocatedFiles.Count != 0);
+                    CommandManager.InvalidateRequerySuggested();
                 }
             };
 
@@ -170,6 +171,11 @@ namespace ImageSim.ViewModels
             {
                 tab.CloseTabCommand.Execute(null);
             }
+        }
+
+        private bool HasFiles()
+        {
+            return FilesVM.LocatedFiles.Count > 1;
         }
 
         private async void HandleCompareHashes()
