@@ -26,17 +26,4 @@ namespace ImageSim.Services
             return Directory.EnumerateFiles(folder, "*", System.IO.SearchOption.AllDirectories).Where(x => filter(x));
         }
     }
-
-    public class DummyFileService : IFileService
-    {
-        public void DeleteFileToBin(string path) => throw new NotImplementedException();
-
-        public IEnumerable<string> EnumerateDirectory(string folder, Predicate<string> filter)
-        {
-            for (int i = 0; i < 20; i++)
-            {
-                yield return $"File {i + 1}";
-            }
-        }
-    }
 }
