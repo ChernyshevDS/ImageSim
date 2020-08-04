@@ -168,11 +168,17 @@ namespace ImageSim.Algorithms
         public virtual byte[] Serialize() => Data;
     }
 
-    public class MD5HashDescriptor : AbstractSerializableDescriptor, IEquatable<MD5HashDescriptor>
+    public class MD5HashDescriptor : AbstractSerializableDescriptor
     {
         public MD5HashDescriptor() { }
         public MD5HashDescriptor(byte[] hash) : base(hash) { }
-        public bool Equals([AllowNull] MD5HashDescriptor other) => this.DataEquals(other);
+        public bool DataEquals([AllowNull] MD5HashDescriptor other) => base.DataEquals(other);
+    }
+
+    public class MD5HashComparer : IEqualityComparer<MD5HashDescriptor>
+    {
+        public bool Equals([AllowNull] MD5HashDescriptor x, [AllowNull] MD5HashDescriptor y) => x?.DataEquals(y) ?? false;
+        public int GetHashCode([DisallowNull] MD5HashDescriptor obj) => 0;
     }
 
     public class MD5FileSimilarityAlgorithm : IHashingAlgorithm<MD5HashDescriptor>

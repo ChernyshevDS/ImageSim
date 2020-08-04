@@ -231,7 +231,7 @@ namespace ImageSim.ViewModels
             ctrl.SetMessage("Searching for hash conflicts...");
 
             var groups = cache
-                .GroupBy(x => x.Value)
+                .GroupBy(x => x.Value, new MD5HashComparer())
                 .Where(x => x.Count() > 1)
                 .ToList();
 
@@ -289,59 +289,6 @@ namespace ImageSim.ViewModels
             this.Tabs.Add(tab);
             CurrentTab = tab;
         }
-
-        /*private async Task<ConflictCollectionVM> RunFilesDCTHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
-        {
-            int processed = 0;
-            var total = FilesVM.LocatedFiles.Count;
-            var maxSize = new OpenCvSharp.Size(512, 512);
-            var thread_count = Utils.GetRecommendedConcurrencyLevel();
-
-            var dict = new ConcurrentDictionary<string, ulong>(thread_count, total);
-            var results = await TaskExtensions.ForEachAsync(FilesVM.LocatedFiles, async (x) =>
-            {
-                token.ThrowIfCancellationRequested();
-
-                if (!VMHelper.IsImageExtension(Path.GetExtension(x)))
-                    return false;
-
-                var data = await GetOrCreateAssociatedFileData(x, DCTImageHashData.Key,
-                    p => new DCTImageHashData() { Hash = PHash.DCT.GetImageHash(p, maxSize) });
-                dict.TryAdd(x, data.Hash);
-                throw new NotImplementedException();
-
-                var proc = Interlocked.Increment(ref processed);
-                progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
-                return true;
-            }, thread_count);
-
-            var max_similarity = 10;
-            progress.Report(new ProgressArgs($"Searching similarities", null));
-            var hashes = dict.ToList();
-            var cvm = new ConflictCollectionVM();
-            for (int i = 0; i < dict.Count - 1; i++)
-            {
-                for (int j = i + 1; j < dict.Count; j++)
-                {
-                    var left = hashes[i];
-                    var right = hashes[j];
-                    var distance = PHash.DCT.HammingDistance(left.Value, right.Value);
-                    if (distance <= max_similarity)
-                    {
-                        cvm.Conflicts.Add(new ImageDCTConflictVM()
-                        {
-                            FirstImage = (ImageDetailsVM)VMHelper.GetDetailsVMByPath(left.Key),
-                            SecondImage = (ImageDetailsVM)VMHelper.GetDetailsVMByPath(right.Key)
-                        });
-                    }
-                }
-            }
-
-            if (cvm.Conflicts.Count == 0)
-                return null;
-
-            return cvm;
-        }*/
 
         readonly struct SimilarityIdx
         {
@@ -441,81 +388,45 @@ namespace ImageSim.ViewModels
                 return new OperationResult<ConflictCollectionVM>(false, cvm);
         }
 
-        private void HandleSyncCache()
+        private async void HandleSyncCache()
         {
-            var removed = ProgressWindow.RunTaskAsync(async (progress, token) =>
-            {
-                progress.Report(new ProgressArgs("Searching orphaned cache records...", null));
-                var currentFolder = FilesVM.LocatedFiles.ToHashSet();
-                var cached = FileStorage.GetAllKeys();
+            var ctrl = await DialogService.ShowProgressAsync(this, "Compacting cache...", "Searching for orphaned cache records...");
+            ctrl.SetProgress(0);
 
-                var removedCnt = 0;
-                foreach (var path in cached)
+            var currentFolder = FilesVM.LocatedFiles.ToHashSet();
+            var cached = FileStorage.GetAllKeys().ToList();
+
+            var removedCnt = 0;
+            var processed = 0;
+            var total = cached.Count;
+            foreach (var path in cached)
+            {
+                if (currentFolder.Contains(path))
                 {
-                    if (currentFolder.Contains(path))
-                    {
-                        var record = await FileStorage.GetFileRecordAsync(path);
-                        var realTime = PersistentFileRecord.ReadModificationTime(path);
-                        if (record.Modified != realTime)
-                        {
-                            await FileStorage.RemoveFileRecordAsync(path);
-                            progress.Report(new ProgressArgs($"Removed {++removedCnt} records", null));
-                        }
-                    }
-                    else
+                    var record = await FileStorage.GetFileRecordAsync(path);
+                    var realTime = PersistentFileRecord.ReadModificationTime(path);
+                    if (record.Modified != realTime)
                     {
                         await FileStorage.RemoveFileRecordAsync(path);
-                        progress.Report(new ProgressArgs($"Removed {++removedCnt} records", null));
+                        ctrl.SetMessage($"Removed {++removedCnt} records");
                     }
                 }
+                else
+                {
+                    await FileStorage.RemoveFileRecordAsync(path);
+                    ctrl.SetMessage($"Removed {++removedCnt} records");
+                }
+                var progress = ++processed / (double)total;
+                ctrl.SetProgress(progress);
+            }
+            await ctrl.CloseAsync();
 
-                return removedCnt;
-            }, "Synchronizing cache...");
-            MessageBox.Show($"Removed {removed.Result} orphaned and outdated cache records");
+            await DialogService.ShowMessageAsync(this, "Complete", $"Removed {removedCnt} orphaned and outdated cache records");
         }
 
         private void OpenLink(Uri link)
         {
             Process.Start(new ProcessStartInfo(link.AbsoluteUri) { UseShellExecute = true, CreateNoWindow = true });
-        }
-
-        private async Task<ConflictCollectionVM> RunFilesHashingAsync(IProgress<ProgressArgs> progress, CancellationToken token)
-        {
-            int processed = 0;
-            var total = FilesVM.LocatedFiles.Count;
-            var thread_count = Utils.GetRecommendedConcurrencyLevel();
-
-            var hashDict = new ConcurrentDictionary<string, string>(thread_count, total);
-            var results = await TaskExtensions.ForEachAsync(FilesVM.LocatedFiles, async (x) =>
-            {
-                token.ThrowIfCancellationRequested();
-
-                /*var data = await GetOrCreateAssociatedFileData(x, HashData.Key,
-                    p => new HashData() { Hash = Utils.GetFileHash(p) });
-                hashDict.TryAdd(x, data.Hash);*/
-                throw new NotImplementedException();
-
-                var proc = Interlocked.Increment(ref processed);
-                progress.Report(new ProgressArgs($"Hashed {proc} of {total}", proc * 100.0 / total));
-                return true;
-            }, thread_count);
-
-            var groups = hashDict
-                .GroupBy(x => x.Value)
-                .Where(x => x.Count() > 1)
-                .ToList();
-
-            if (!groups.Any())
-                return null;
-
-            var coll = new ConflictCollectionVM();
-            foreach (var group in groups)
-            {
-                var conflict = HashConflictVM.FromPaths(group.Select(x => x.Key));
-                coll.Conflicts.Add(conflict);
-            }
-
-            return coll;
         }
     }
 
@@ -811,11 +722,11 @@ namespace ImageSim.ViewModels
 
             Messenger.Default.Register<FileRemovedMessage>(this, msg =>
             {
-                if (msg.Path == FirstImage.FilePath || msg.Path == SecondImage.FilePath)
+                if (msg.Path == firstPath || msg.Path == secondPath)
                 {
                     MarkAsResolved();
                 }
-            });
+            }, true);
         }
 
         private ImageDetailsVM CreateDetails(string path) => 

@@ -8,8 +8,6 @@ namespace ImageSim.ViewModels
     {
         public static byte[] GetFileHash(string path)
         {
-            System.Threading.Thread.Sleep(300); //FIXME
-            #warning Intentional slow down for debug purposes
             using var fs = File.OpenRead(path);
             var alg = System.Security.Cryptography.MD5.Create();
             return alg.ComputeHash(fs);
