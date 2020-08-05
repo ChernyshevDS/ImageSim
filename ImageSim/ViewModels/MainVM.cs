@@ -42,6 +42,7 @@ namespace ImageSim.ViewModels
 
         private RelayCommand compareHashesCommand;
         private RelayCommand checkSimilarDCTCmd;
+        private RelayCommand checkSimilarMarrCmd;
         private RelayCommand clearCacheCmd;
         private RelayCommand syncCacheCmd;
         private RelayCommand<Uri> openLinkCmd;
@@ -53,6 +54,7 @@ namespace ImageSim.ViewModels
 
         public RelayCommand CompareHashesCommand => compareHashesCommand ??= new RelayCommand(HandleCompareHashes, HasFiles);
         public RelayCommand CheckSimilarDCTCommand => checkSimilarDCTCmd ??= new RelayCommand(HandleCompareDCTImageHashes, HasFiles);
+        public RelayCommand CheckSimilarMarrCommand => checkSimilarMarrCmd ??= new RelayCommand(HandleCompareMarrHashes, HasFiles);
         public RelayCommand ClearCacheCommand => clearCacheCmd ??= new RelayCommand(async () => await FileStorage.Invalidate());
         public RelayCommand SyncCacheCommand => syncCacheCmd ??= new RelayCommand(HandleSyncCache, HasFiles);
 
@@ -332,6 +334,40 @@ namespace ImageSim.ViewModels
             }
 
             var tab = new TabVM() { Header = "DCT", ContentVM = result.Result };
+            this.Tabs.Add(tab);
+            CurrentTab = tab;
+        }
+
+        private async void HandleCompareMarrHashes()
+        {
+            var thresholdStr = await DialogService.ShowInputAsync(this, "Enter similarity threshold", 
+                "Please, enter minimum similarity value from 0 to 1:");
+            if (!double.TryParse(thresholdStr, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double threshold)
+            {
+
+            }
+
+            var ctrl = await DialogService.ShowProgressAsync(this, "Matching images...", "Preparing...", true);
+            await LinkExternalProgress(ctrl);
+
+            var algorithm = new MarrImageSimilarityAlgorithm();
+            var cachedAlg = algorithm.WithPersistentCache(FileStorage);
+
+            var images = FilesVM.LocatedFiles.Where(x => VMHelper.IsImageExtension(Path.GetExtension(x))).ToList();
+            var result = await BuildConflictsVM(ctrl, images, cachedAlg, 0.70);
+            await ctrl.CloseAsync();
+
+            if (result.IsCancelled)
+                return;
+
+            if (result.Result == null)
+            {
+                await DialogService.ShowMessageAsync(this, "Hooray!", "There are no files similar enough!");
+                return;
+            }
+
+            var tab = new TabVM() { Header = "Marr", ContentVM = result.Result };
             this.Tabs.Add(tab);
             CurrentTab = tab;
         }

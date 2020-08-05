@@ -35,6 +35,7 @@
                 <mah:DropDownButton.Items>
                     <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
                     <MenuItem Header="Find similar images (DCT)" Command="{Binding CheckSimilarDCTCommand}"/>
+                    <MenuItem Header="Find similar images (Marr)" Command="{Binding CheckSimilarMarrCommand}"/>
                     <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"/>
                     <MenuItem Header="Shrink cache" Command="{Binding SyncCacheCommand}" 
                               ToolTipService.Placement="Right" ToolTip="Remove cache records for files not listed 

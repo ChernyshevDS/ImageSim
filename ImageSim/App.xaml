@@ -188,7 +188,7 @@
                     </Grid>
 
                     <TextBlock Grid.Row="2" HorizontalAlignment="Center" FontSize="16"
-                               Text="{Binding SimilarityMetric, StringFormat='Similarity: {0}'}"/>
+                               Text="{Binding SimilarityMetric, StringFormat='Similarity: {0: 0.###}'}"/>
                     
                     <Button Grid.Row="2" Content="Skip" HorizontalAlignment="Right" Margin="10,4"
                             Command="{Binding ResolveCommand}" Style="{StaticResource SkipConflictButtonStyle}"/>

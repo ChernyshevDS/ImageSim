@@ -13,6 +13,11 @@ namespace ImageSim.ViewModels
             Messenger.Default.Register<FileRemovedMessage>(this, msg =>
             {
                 RemoveAll(x => msg.Path == x.Left || msg.Path == x.Right);
+
+                if (Conflicts.Count == 0)
+                {
+                    Messenger.Default.Send(new ConflictCollectionClearedMessage(this));
+                }
             });
 
             Messenger.Default.Register<ConflictResolvedMessage>(this, msg =>
