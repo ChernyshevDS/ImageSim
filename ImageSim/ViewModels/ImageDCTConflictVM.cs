@@ -30,8 +30,10 @@ namespace ImageSim.ViewModels
             secondImage = new Lazy<ImageDetailsVM>(() => CreateDetails(secondPath));
         }
 
-        private ImageDetailsVM CreateDetails(string path) => 
-            (ImageDetailsVM)VMHelper.GetDetailsVMByPath(path);
+        private ImageDetailsVM CreateDetails(string path)
+        {
+            return (ImageDetailsVM)VMHelper.GetDetailsVMByPath(path);
+        }
 
         private void HandleKeepImage(ImageDetailsVM obj)
         {

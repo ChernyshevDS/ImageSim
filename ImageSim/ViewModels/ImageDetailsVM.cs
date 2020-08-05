@@ -8,11 +8,13 @@ namespace ImageSim.ViewModels
         private int height;
         private bool isValid;
         private string format;
+        private double areaToSizeRatio;
 
         public int Width { get => width; set => Set(ref width, value); }
         public int Height { get => height; set => Set(ref height, value); }
         public string Format { get => format; set => Set(ref format, value); }
         public bool IsValid { get => isValid; set => Set(ref isValid, value); }
+        public double AreaToSizeRatio { get => areaToSizeRatio; set => Set(ref areaToSizeRatio, value); }
 
         public ImageDetailsVM(string path) : base(path)
         {
@@ -23,6 +25,7 @@ namespace ImageSim.ViewModels
                 Height = img.Height;
                 Format = img.RawFormat.ToString();
                 IsValid = true;
+                AreaToSizeRatio = Width * Height / (double)FileSize;
             }
             catch (Exception)
             {
@@ -30,6 +33,7 @@ namespace ImageSim.ViewModels
                 Height = 0;
                 Format = "Unknown format";
                 IsValid = false;
+                AreaToSizeRatio = 0;
             }
         }
     }

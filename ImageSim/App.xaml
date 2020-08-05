@@ -185,6 +185,24 @@
                                 Command="{Binding KeepImageCommand}" CommandParameter="{Binding FirstImage}"/>
                         <Button Grid.Column="1" Content="{Binding SecondImage}" Margin="4"
                                 Command="{Binding KeepImageCommand}" CommandParameter="{Binding SecondImage}"/>
+
+                        <StackPanel Grid.Column="0" Orientation="Vertical" Margin="10"
+                                    HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                            <Border x:Name="firstQual" BorderBrush="LimeGreen" BorderThickness="1" Width="25" Height="25" Visibility="Collapsed"
+                                    Background="Transparent" ToolTip="This image has better area to file size ratio">
+                                <TextBlock Text="R" FontWeight="Bold" FontSize="16" 
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Vertical" Margin="10"
+                                    HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                            <Border x:Name="secQual" BorderBrush="LimeGreen" BorderThickness="1" Width="25" Height="25"
+                                    Background="Transparent" ToolTip="This image has better area to file size ratio">
+                                <TextBlock Text="R" FontWeight="Bold" FontSize="16" 
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
                     </Grid>
 
                     <TextBlock Grid.Row="2" HorizontalAlignment="Center" FontSize="16"
@@ -193,6 +211,21 @@
                     <Button Grid.Row="2" Content="Skip" HorizontalAlignment="Right" Margin="10,4"
                             Command="{Binding ResolveCommand}" Style="{StaticResource SkipConflictButtonStyle}"/>
                 </Grid>
+
+                <DataTemplate.Triggers>
+                    <DataTrigger Value="True">
+                        <DataTrigger.Binding>
+                            <MultiBinding Converter="{conv:ArithmeticComparisonConverter}" ConverterParameter="G">
+                                <Binding Path="FirstImage.AreaToSizeRatio" Mode="OneWay"/>
+                                <Binding Path="SecondImage.AreaToSizeRatio" Mode="OneWay"/>
+                            </MultiBinding>
+                        </DataTrigger.Binding>
+                        <DataTrigger.Setters>
+                            <Setter TargetName="firstSize" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="secSize" Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger.Setters>
+                    </DataTrigger>
+                </DataTemplate.Triggers>
             </DataTemplate>
 
             <DataTemplate DataType="{x:Type vm:ConflictCollectionVM}">
