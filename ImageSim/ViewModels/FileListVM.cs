@@ -3,8 +3,12 @@ using GalaSoft.MvvmLight.Command;
 using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Messages;
 using ImageSim.Services;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace ImageSim.ViewModels
@@ -13,6 +17,7 @@ namespace ImageSim.ViewModels
     {
         private readonly IFileService FileService;
         private readonly ObservableCollection<string> Files = new ObservableCollection<string>();
+        private readonly HashSet<string> FileSet = new HashSet<string>();
         
         private RelayCommand<string> deleteFileCommand;
         private RelayCommand<string> excludeFileCommand;
@@ -52,6 +57,8 @@ namespace ImageSim.ViewModels
                 return;
             }
 
+            Files.CollectionChanged += Files_CollectionChanged;
+
             Messenger.Default.Register<CurrentFileChangedMessage>(this, x =>
             {
                 FileDetailsVM = VMHelper.GetDetailsVMByPath(x?.File);
@@ -71,6 +78,33 @@ namespace ImageSim.ViewModels
                         break;
                 }
             });
+        }
+
+        private void Files_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            var newItem = e.NewItems?.Cast<string>().FirstOrDefault();
+            var oldItem = e.OldItems?.Cast<string>().FirstOrDefault();
+
+            switch (e.Action)
+            {
+                case NotifyCollectionChangedAction.Add:
+                    FileSet.Add(newItem);
+                    break;
+                case NotifyCollectionChangedAction.Remove:
+                    FileSet.Remove(oldItem);
+                    break;
+                case NotifyCollectionChangedAction.Replace:
+                    FileSet.Remove(oldItem);
+                    FileSet.Add(newItem);
+                    break;
+                case NotifyCollectionChangedAction.Move:
+                    break;
+                case NotifyCollectionChangedAction.Reset:
+                    FileSet.Clear();
+                    break;
+                default:
+                    break;
+            }
         }
 
         private void ExcludeFile(string path)
@@ -103,6 +137,14 @@ namespace ImageSim.ViewModels
                 return false;
             Files.Add(path);
             return true;
+        }
+
+        public async Task<bool> AddFileAsync(string path)
+        {
+            var canAdd = await Task.Run(() => !FileSet.Contains(path));
+            if (canAdd)
+                Files.Add(path);
+            return canAdd;
         }
 
         public void Clear()

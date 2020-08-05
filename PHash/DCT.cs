@@ -39,7 +39,7 @@ namespace PHash
             Mat img = null;
             if (src.Channels() >= 3)
             {
-                var chan0 = Utils.GetBrightnessComponent(src);
+                using var chan0 = Utils.GetBrightnessComponent(src);
                 img = new Mat(chan0.Size(), MatType.CV_32FC1);
                 Cv2.BoxFilter(chan0, img, MatType.CV_32FC1, new Size(7, 7), null, normalize: false, BorderTypes.Replicate);
             }
@@ -48,12 +48,15 @@ namespace PHash
                 img = new Mat(src.Size(), MatType.CV_32FC1);
                 Cv2.BoxFilter(src, img, MatType.CV_32FC1, new Size(7, 7), null, normalize: false, BorderTypes.Replicate);
             }
+            src.Dispose();
 
             img = img.Resize(new Size(32, 32), 0, 0, InterpolationFlags.Nearest);
             Mat C = DCT_MATRIX_32;
             Mat Ctransp = DCT_MATRIX_32_TRANSP;
-            Mat dctImage = C * img * Ctransp;
-            Mat subsec = dctImage.SubMat(1, 9, 1, 9).Clone().Reshape(0, 1);
+            using Mat dctImage = C * img * Ctransp;
+            using Mat subsec = dctImage.SubMat(1, 9, 1, 9).Clone().Reshape(0, 1);
+
+            img.Dispose();
 
             float median = GetMedianValue(subsec);
             UInt64 one = 0x0000000000000001;

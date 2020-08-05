@@ -22,7 +22,7 @@ namespace ImageSim.Algorithms
             cachedRecord.SetData(dataKey, feature);
             storage.UpdateFileRecordAsync(path, cachedRecord).Wait();
 
-            System.Diagnostics.Debug.WriteLine($"{System.IO.Path.GetFileName(path)}: cache updated");
+            //System.Diagnostics.Debug.WriteLine($"{System.IO.Path.GetFileName(path)}: cache updated");
             base.Add(path, feature);
         }
 

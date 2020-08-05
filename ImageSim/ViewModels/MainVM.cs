@@ -136,23 +136,27 @@ namespace ImageSim.ViewModels
             var ctrl = await DialogService.ShowProgressAsync(this, "Adding files...", "Added 0 files", true);
             ctrl.SetIndeterminate();
 
-            var ch = Channel.CreateUnbounded<string>();
-            var producer = Task.Run(() =>
+            var ch = Channel.CreateBounded<string>(new BoundedChannelOptions(20)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = true
+            });
+            var producer = Task.Run(async () =>
             {
                 foreach (var file in files)
                 {
                     if (ctrl.IsCanceled)
                         break;
-                    ch.Writer.WriteAsync(file);
+                    await ch.Writer.WriteAsync(file);
                 }
                 ch.Writer.Complete();
             });
 
-            await Task.Yield();
             var added = 0;
             await foreach (var item in ch.Reader.ReadAllAsync())
             {
-                FilesVM.AddFile(item);
+                await FilesVM.AddFileAsync(item);
                 ctrl.SetMessage($"Added {++added} files");
             }
 
@@ -312,11 +316,13 @@ namespace ImageSim.ViewModels
         private async Task<OperationResult<ConflictCollectionVM>> BuildConflictsVM(ProgressDialogController ctrl, 
             IReadOnlyList<string> paths, ISimilarityAlgorithm similarityAlg, double threshold)
         {
+            var nReaders = Utils.GetRecommendedConcurrencyLevel();
             var pairs = EnumeratePairs(paths);
-            var ch = Channel.CreateUnbounded<(string, string)>(new UnboundedChannelOptions() 
+            var ch = Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(nReaders * 2) 
             { 
                 SingleWriter = true, 
-                SingleReader = false 
+                SingleReader = false, 
+                FullMode = BoundedChannelFullMode.Wait
             });
 
             var N = paths.Count - 1;
@@ -326,7 +332,6 @@ namespace ImageSim.ViewModels
             var nPairs = N * (N + 1) / 2;
             var nProcessed = 0;
 
-            var nReaders = Utils.GetRecommendedConcurrencyLevel();
             var nTasks = nReaders + 1;
             var tasks = new Task[nTasks];
 
@@ -339,17 +344,29 @@ namespace ImageSim.ViewModels
                     {
                         var pair = await ch.Reader.ReadAsync();
                         var metric = similarityAlg.GetSimilarity(pair.Item1, pair.Item2);
-                        bag.Add(new SimilarityIdx(pair.Item1, pair.Item2, metric));
+                        if(metric >= threshold)
+                            bag.Add(new SimilarityIdx(pair.Item1, pair.Item2, metric));
 
                         var proc = Interlocked.Increment(ref nProcessed);
-                        var progress = (double)proc / nPairs;
-                        ctrl.SetMessage($"Processed {proc} of {nPairs} image pairs");
-                        ctrl.SetProgress(progress);
+                        if (proc < N)
+                        {
+                            var progress = (double)proc / N;
+                            ctrl.SetMessage($"Hashed {proc} of {N} images");
+                            ctrl.SetProgress(progress);
+                        }
+                        else 
+                        {
+                            var progress = (double)proc / nPairs;
+                            ctrl.SetMessage($"Processed {proc} of {nPairs} image pairs");
+                            ctrl.SetProgress(progress);
+                        }
+                        
+                        
                     }
                 });
             }
             
-            var producer = Task.Run(() =>
+            var producer = Task.Run(async () =>
             {
                 foreach (var pair in pairs)
                 {
@@ -358,7 +375,7 @@ namespace ImageSim.ViewModels
                         ch.Writer.Complete();
                         return;
                     }
-                    ch.Writer.WriteAsync(pair);
+                    await ch.Writer.WriteAsync(pair);
                 }
                 ch.Writer.Complete();
             });
