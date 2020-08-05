@@ -141,6 +141,7 @@
                                         <TextBlock.ContextMenu>
                                             <ContextMenu>
                                                 <MenuItem Header="Delete" Command="{Binding DeleteCommand}"/>
+                                                <MenuItem Header="Keep this and delete others" Command="{Binding KeepCommand}"/>
                                             </ContextMenu>
                                         </TextBlock.ContextMenu>
                                     </TextBlock>
@@ -217,7 +218,7 @@
                             <Run Text="Conflict "/>
                             <Run Text="{Binding CurrentIndex, Mode=OneWay, Converter={StaticResource offsetConv}, ConverterParameter=1}"/>
                             <Run Text=" of "/>
-                            <Run Text="{Binding Conflicts.Count, Mode=OneWay}"/>
+                            <Run Text="{Binding ConflictsCount, Mode=OneWay}"/>
                         </TextBlock>
                     </Grid>
                 </Grid>

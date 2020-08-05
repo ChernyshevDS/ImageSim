@@ -28,14 +28,6 @@ namespace ImageSim.ViewModels
         {
             firstImage = new Lazy<ImageDetailsVM>(() => CreateDetails(firstPath));
             secondImage = new Lazy<ImageDetailsVM>(() => CreateDetails(secondPath));
-
-            Messenger.Default.Register<FileRemovedMessage>(this, msg =>
-            {
-                if (msg.Path == firstPath || msg.Path == secondPath)
-                {
-                    MarkAsResolved();
-                }
-            }, true);
         }
 
         private ImageDetailsVM CreateDetails(string path) => 

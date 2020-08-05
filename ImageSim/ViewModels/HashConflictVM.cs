@@ -1,6 +1,7 @@
 ﻿using GalaSoft.MvvmLight;
 using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Messages;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -52,9 +53,27 @@ namespace ImageSim.ViewModels
             var vm = new HashConflictVM();
             foreach (var item in paths)
             {
-                vm.ConflictingFiles.Add(new HashConflictEntryVM() { FilePath = item });
+                vm.ConflictingFiles.Add(new HashConflictEntryVM(vm) { FilePath = item });
             }
             return vm;
+        }
+
+        public void KeepExclusive(HashConflictEntryVM entry)
+        {
+            Messenger.Default.Unregister<FileRemovedMessage>(this);
+            ConflictingFiles.CollectionChanged -= ConflictingFiles_CollectionChanged;
+            try
+            {
+                var toDelete = ConflictingFiles.Where(x => x != entry).ToList();
+                foreach (var item in toDelete)
+                {
+                    Messenger.Default.Send(new FileOperationMessage(item.FilePath, FileOperation.Delete));
+                }
+            }
+            finally
+            {
+                MarkAsResolved();
+            }
         }
 
         private void HandleFileRemoved(FileRemovedMessage obj)

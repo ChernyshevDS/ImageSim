@@ -1,117 +1,164 @@
 ﻿using GalaSoft.MvvmLight;
 using GalaSoft.MvvmLight.Command;
-using GalaSoft.MvvmLight.Messaging;
-using ImageSim.Messages;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace ImageSim.ViewModels
 {
-    public class ConflictCollectionVM : ViewModelBase
+    public abstract class ConflictCollectionVM : ViewModelBase
+    { 
+        public abstract int ConflictsCount { get; }
+        public abstract int CurrentIndex { get; set; }
+        public abstract ConflictVM CurrentConflict { get; protected set; }
+    }
+
+    public abstract class ConflictCollectionVM<TConflict> : ConflictCollectionVM
     {
+        private readonly IList<TConflict> conflicts;
         private RelayCommand previousConflictCommand;
         private RelayCommand nextConflictCommand;
         private ConflictVM currentConflict;
+        private int currentIndex = -1;
 
-        public ObservableCollection<ConflictVM> Conflicts { get; }
+        protected IReadOnlyList<TConflict> Conflicts => (IReadOnlyList<TConflict>)conflicts;
 
-        public ConflictVM CurrentConflict
+        public RelayCommand PreviousConflictCommand => previousConflictCommand ??= new RelayCommand(HandlePrevious, CanGoBack);
+        public RelayCommand NextConflictCommand => nextConflictCommand ??= new RelayCommand(HandleNext, CanGoNext);
+        
+        public override int ConflictsCount => conflicts.Count;
+        public override ConflictVM CurrentConflict { get => currentConflict; protected set => Set(ref currentConflict, value); }
+        public override int CurrentIndex
         {
-            get => currentConflict;
+            get => currentIndex;
             set
             {
-                if (Set(ref currentConflict, value))
+                if (SetCurrentIndex(value))
                 {
-                    var last = Conflicts.LastOrDefault();
-                    currentConflict.IsLastConflict = (currentConflict == last);
-
-                    NextConflictCommand.RaiseCanExecuteChanged();
-                    PreviousConflictCommand.RaiseCanExecuteChanged();
-                    RaisePropertyChanged(nameof(CurrentIndex));
+                    UpdateCurrentConflict();
                 }
             }
         }
-        public int CurrentIndex => Conflicts.IndexOf(CurrentConflict);
 
-        public RelayCommand NextConflictCommand => nextConflictCommand ??= new RelayCommand(HandleNext, CanGoNext);
+        protected ConflictCollectionVM([AllowNull] IList<TConflict> source)
+        {
+            conflicts = source ?? new List<TConflict>();
+            RaisePropertyChanged(nameof(ConflictsCount));
+            SetCurrentIndex(0, true);
+            UpdateCurrentConflict();
+        }
+
+        protected bool SetCurrentIndex(int index, bool forceUpdate = false)
+        {
+            index = ConflictsCount == 0 ? -1 : index.Clamp(0, ConflictsCount - 1);
+            var changed = Set(ref currentIndex, index, nameof(CurrentIndex));
+            if (changed || forceUpdate)
+            {
+                NextConflictCommand.RaiseCanExecuteChanged();
+                PreviousConflictCommand.RaiseCanExecuteChanged();
+            }
+            return changed;
+        }
+
+        protected void UpdateCurrentConflict()
+        {
+            if (CurrentIndex < 0 || CurrentIndex >= ConflictsCount)
+            {
+                CurrentConflict = null;
+            }
+            else 
+            {
+                CurrentConflict = GetConflictVM(CurrentIndex);
+                UpdateLastConflictFlag();
+            }
+        }
+
+        private void UpdateLastConflictFlag()
+        {
+            if (CurrentConflict == null || ConflictsCount == 0 || CurrentIndex < 0)
+                return;
+            CurrentConflict.IsLastConflict = (CurrentIndex == ConflictsCount - 1);
+        }
 
         private void HandleNext()
         {
-            if(CanGoNext())
-                CurrentConflict = Conflicts[CurrentIndex + 1];
+            if (CanGoNext())
+                CurrentIndex += 1;
         }
 
-        private bool CanGoNext()
-        {
-            return CurrentIndex >= 0 && CurrentIndex < Conflicts.Count - 1;
-        }
-
-        public RelayCommand PreviousConflictCommand => previousConflictCommand ??= new RelayCommand(HandlePrevious, CanGoBack);
+        private bool CanGoNext() => CurrentIndex >= 0 && CurrentIndex < ConflictsCount - 1;
 
         private void HandlePrevious()
         {
-            if(CanGoBack())
-                CurrentConflict = Conflicts[CurrentIndex - 1];
+            if (CanGoBack())
+                CurrentIndex -= 1;
         }
 
-        private bool CanGoBack()
-        {
-            return CurrentIndex > 0;
-        }
+        private bool CanGoBack() => CurrentIndex > 0;
 
-        public ConflictCollectionVM()
-        {
-            Conflicts = new ObservableCollection<ConflictVM>();
+        protected abstract ConflictVM GetConflictVM(int conflictIndex);
 
-            if (IsInDesignMode)
+        public virtual void AddConflict(TConflict conflict)
+        {
+            conflicts.Add(conflict);
+            RaisePropertyChanged(nameof(ConflictsCount));
+            if (CurrentConflict == null)
             {
-                var conflict = HashConflictVM.FromPaths(new string[] { "File 1", "File 2" });
-                Conflicts.Add(conflict);
+                SetCurrentIndex(0);
+                UpdateCurrentConflict();
+            }
+            UpdateLastConflictFlag();
+        }
+
+        public void RemoveConflict(TConflict conflict)
+        {
+            var idx = conflicts.IndexOf(conflict);
+            RemoveConflictAt(idx);
+        }
+
+        public virtual void RemoveConflictAt(int index)
+        {
+            if (index < 0 || index > ConflictsCount)
                 return;
+            conflicts.RemoveAt(index);
+            RaisePropertyChanged(nameof(ConflictsCount));
+            if (index < CurrentIndex)
+            {
+                SetCurrentIndex(CurrentIndex - 1);
             }
-
-            Conflicts.CollectionChanged += Conflicts_CollectionChanged;
-
-            Messenger.Default.Register<ConflictResolvedMessage>(this, msg => {
-                Conflicts.Remove(msg.Conflict);
-
-                if (Conflicts.Count == 0)
-                {
-                    Messenger.Default.Send(new ConflictCollectionClearedMessage(this));
-                }
-            });
+            else if (index == CurrentIndex)
+            {
+                SetCurrentIndex(index);
+                UpdateCurrentConflict();
+            }
+            UpdateLastConflictFlag();
         }
 
-        private void Conflicts_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        public void RemoveAll(Predicate<TConflict> filter)
         {
-            var oldItem = e.OldItems?.OfType<ConflictVM>().FirstOrDefault();
-            var newItem = e.NewItems?.OfType<ConflictVM>().FirstOrDefault();
-
-            switch (e.Action)
+            var removedBeforeCurrent = 0;
+            var removed = 0;
+            var index = conflicts.Count - 1;
+            while (true)
             {
-                case NotifyCollectionChangedAction.Add:
-                    if (CurrentConflict == null)
-                    {
-                        CurrentConflict = Conflicts.FirstOrDefault();
-                    }
+                if (index < 0)
                     break;
-                case NotifyCollectionChangedAction.Remove:
-                case NotifyCollectionChangedAction.Replace:
-                    if (oldItem == CurrentConflict)
-                    {
-                        CurrentConflict = newItem ?? Conflicts.FirstOrDefault();
-                    }
-                    break;
-                case NotifyCollectionChangedAction.Move:
-                    break;
-                case NotifyCollectionChangedAction.Reset:
-                    CurrentConflict = null;
-                    break;
-                default:
-                    break;
+                var item = conflicts[index];
+                if (filter(item))
+                {
+                    conflicts.RemoveAt(index);
+                    if (index < CurrentIndex)
+                        removedBeforeCurrent++;
+                    removed++;
+                }
+                index--;
             }
+            SetCurrentIndex(CurrentIndex - removedBeforeCurrent, true);
+            UpdateCurrentConflict();
+            RaisePropertyChanged(nameof(ConflictsCount));
         }
     }
 }

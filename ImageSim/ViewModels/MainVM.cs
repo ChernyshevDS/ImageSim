@@ -89,7 +89,7 @@ namespace ImageSim.ViewModels
 
             if (IsInDesignMode)
             {
-                Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new ConflictCollectionVM() });
+                Tabs.Add(new TabVM() { Header = "Conflicts", ContentVM = new HashConflictCollectionVM() });
                 return;
             }
 
@@ -200,7 +200,7 @@ namespace ImageSim.ViewModels
             CurrentTab = tab;
         }
 
-        private async Task<OperationResult<ConflictCollectionVM>> HandleCompareHashesAsync()
+        private async Task<OperationResult<HashConflictCollectionVM>> HandleCompareHashesAsync()
         {
             var ctrl = await DialogService.ShowProgressAsync(this, "Calculating hashes...", "Hashed 0 files", true);
 
@@ -233,7 +233,7 @@ namespace ImageSim.ViewModels
             if (ctrl.IsCanceled)
             {
                 await ctrl.CloseAsync();
-                return new OperationResult<ConflictCollectionVM>(true, null);
+                return new OperationResult<HashConflictCollectionVM>(true, null);
             }
 
             ctrl.SetIndeterminate();
@@ -247,19 +247,19 @@ namespace ImageSim.ViewModels
             if (!groups.Any())
             {
                 await ctrl.CloseAsync();
-                return new OperationResult<ConflictCollectionVM>(false, null);
+                return new OperationResult<HashConflictCollectionVM>(false, null);
             }
 
             ctrl.SetMessage("Building the view...");
-            var coll = new ConflictCollectionVM();
+            var coll = new HashConflictCollectionVM();
             foreach (var group in groups)
             {
-                var conflict = HashConflictVM.FromPaths(group.Select(x => x.Key));
-                coll.Conflicts.Add(conflict);
+                var conflict = new HashConflictDescriptor(group.Select(x => x.Key).ToArray(), group.Key.Data);
+                coll.AddConflict(conflict);
             }
 
             await ctrl.CloseAsync();
-            return new OperationResult<ConflictCollectionVM>(false, coll);
+            return new OperationResult<HashConflictCollectionVM>(false, coll);
         }
 
         private IEnumerable<(T, T)> EnumeratePairs<T>(IReadOnlyList<T> source)
@@ -299,21 +299,7 @@ namespace ImageSim.ViewModels
             CurrentTab = tab;
         }
 
-        readonly struct SimilarityIdx
-        {
-            internal readonly string Left;
-            internal readonly string Right;
-            internal readonly double Similarity;
-
-            internal SimilarityIdx(string left, string right, double metric)
-            {
-                Left = left;
-                Right = right;
-                Similarity = metric;
-            }
-        }
-
-        private async Task<OperationResult<ConflictCollectionVM>> BuildConflictsVM(ProgressDialogController ctrl, 
+        private async Task<OperationResult<ImageConflictCollectionVM>> BuildConflictsVM(ProgressDialogController ctrl, 
             IReadOnlyList<string> paths, ISimilarityAlgorithm similarityAlg, double threshold)
         {
             var nReaders = Utils.GetRecommendedConcurrencyLevel();
@@ -342,25 +328,25 @@ namespace ImageSim.ViewModels
 
             var tasks = new List<Task>(nReaders);
 
-            var bag = new ConcurrentBag<SimilarityIdx>();
+            var bag = new ConcurrentBag<ConflictDescriptor>();
 
             for (int i = 0; i < nReaders; i++)
             {
                 var readTask = Task.Run(async () => {
                     var nRun = Interlocked.Increment(ref nRunningReaders);
-                    System.Diagnostics.Debug.WriteLine($"Started: {nRun}");
+                    //System.Diagnostics.Debug.WriteLine($"Started: {nRun}");
                     await foreach (var pair in ch.Reader.ReadAllAsync())
                     {
                         var metric = similarityAlg.GetSimilarity(pair.Item1, pair.Item2);
                         if(metric >= threshold)
-                            bag.Add(new SimilarityIdx(pair.Item1, pair.Item2, metric));
+                            bag.Add(new ConflictDescriptor(pair.Item1, pair.Item2, metric));
 
                         var proc = Interlocked.Increment(ref nProcessed);
                         await progressChannel.Writer.WriteAsync(proc);
                     }
 
                     var running = Interlocked.Decrement(ref nRunningReaders);
-                    System.Diagnostics.Debug.WriteLine($"Running: {running}");
+                    //System.Diagnostics.Debug.WriteLine($"Running: {running}");
                     if (running == 0)
                     {
                         progressChannel.Writer.Complete();
@@ -410,34 +396,20 @@ namespace ImageSim.ViewModels
             await Task.WhenAll(tasks.ToArray());
 
             if (ctrl.IsCanceled)
-                return new OperationResult<ConflictCollectionVM>(true, null);
+                return new OperationResult<ImageConflictCollectionVM>(true, null);
 
             ctrl.SetIndeterminate();
             ctrl.SetMessage("Sorting results by similarity metric...");
-
-            await Task.Yield();
             var list = bag.ToList();
             list.Sort((x, y) => Math.Sign(y.Similarity - x.Similarity));    //sort by descending similarity
             
-            ctrl.SetMessage("Building the view...");
+            ctrl.SetMessage("Building the view...");            
+            var cvm = new ImageConflictCollectionVM(list);
             
-            await Task.Yield();
-            var cvm = new ConflictCollectionVM();
-            foreach (var item in list)
-            {
-                if (item.Similarity < threshold)
-                    break;  //as list is sorted, may break here
-
-                cvm.Conflicts.Add(new ImageDCTConflictVM(item.Left, item.Right)
-                {
-                    SimilarityMetric = item.Similarity
-                });
-            }
-
-            if (cvm.Conflicts.Count == 0)
-                return new OperationResult<ConflictCollectionVM>(false, null);
+            if (cvm.ConflictsCount == 0)
+                return new OperationResult<ImageConflictCollectionVM>(false, null);
             else
-                return new OperationResult<ConflictCollectionVM>(false, cvm);
+                return new OperationResult<ImageConflictCollectionVM>(false, cvm);
         }
 
         private async void HandleSyncCache()
