@@ -341,11 +341,12 @@ namespace ImageSim.ViewModels
         private async void HandleCompareMarrHashes()
         {
             var thresholdStr = await DialogService.ShowInputAsync(this, "Enter similarity threshold", 
-                "Please, enter minimum similarity value from 0 to 1:");
+                "Please, enter minimum similarity value from 0 to 1:", new MetroDialogSettings() { DefaultText = "0.75" });
             if (!double.TryParse(thresholdStr, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double threshold)
+                System.Globalization.CultureInfo.InvariantCulture, out double threshold))
             {
-
+                await DialogService.ShowMessageAsync(this, "Error", $"Can't convert text '{thresholdStr}' to number");
+                return;
             }
 
             var ctrl = await DialogService.ShowProgressAsync(this, "Matching images...", "Preparing...", true);
