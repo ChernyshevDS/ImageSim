@@ -177,4 +177,9 @@
                 StringFormat='Files: {0}', FallbackValue='No files'}"/>
         </StatusBar>
     </Grid>
+
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo ProgressState="{Binding Source={StaticResource Locator}, Path=TaskBarVM.ProgressState}"
+                         ProgressValue="{Binding Source={StaticResource Locator}, Path=TaskBarVM.Progress}"/>
+    </Window.TaskbarItemInfo>
 </mah:MetroWindow>

@@ -33,6 +33,7 @@ namespace ImageSim.ViewModels
         private readonly IFileDataStorage FileStorage;
         private readonly FileListVM FilesVM;
         private readonly IDialogCoordinator DialogService;
+        private readonly IExternalProgressIndicator ExternalProgress;
 
         private bool hasLoadedFiles;
         private RelayCommand addFromFolderCmd;
@@ -62,12 +63,14 @@ namespace ImageSim.ViewModels
         public ObservableCollection<TabVM> Tabs { get; }
         public TabVM CurrentTab { get => currentTab; set => Set(ref currentTab, value); }
 
-        public MainVM(IFileService fileService, FileListVM fileList, IFileDataStorage storage, IDialogCoordinator dial)
+        public MainVM(IFileService fileService, FileListVM fileList, IFileDataStorage storage, 
+            IDialogCoordinator dial, IExternalProgressIndicator externalProgress)
         {
             FileStorage = storage;
             FileService = fileService;
             FilesVM = fileList;
             DialogService = dial;
+            ExternalProgress = externalProgress;
 
             var detailsTab = new TabVM()
             {
@@ -107,6 +110,36 @@ namespace ImageSim.ViewModels
             });
         }
 
+        private async Task LinkExternalProgress(ProgressDialogController ctrl)
+        {
+            var pdlg = await DialogService.GetCurrentDialogAsync<ProgressDialog>(this);
+            if (pdlg == null)
+                return;
+            if (!(pdlg.FindName("PART_ProgressBar") is System.Windows.Controls.ProgressBar bar))
+            {
+                ExternalProgress.SetState(ExternalIndicatorState.None);
+                return;
+            }
+
+            ExternalProgress.SetState(ExternalIndicatorState.Normal);
+            ExternalProgress.SetProgress(0);
+            ThreadPool.QueueUserWorkItem(async _ => {
+                while (ctrl.IsOpen)
+                {
+                    Application.Current.Dispatcher.Invoke(() => {
+                        ExternalProgress.SetState(bar.IsIndeterminate ? ExternalIndicatorState.Indeterminate 
+                                                                      : ExternalIndicatorState.Normal);
+                        ExternalProgress.SetProgress(bar.Value);
+                    });
+                    await Task.Delay(100);
+                }
+
+                Application.Current.Dispatcher.Invoke(() => {
+                    ExternalProgress.SetState(ExternalIndicatorState.None);
+                });
+            });
+        }
+
         private async void HandleAddFromFolder()
         {
             var dlg = new System.Windows.Forms.FolderBrowserDialog()
@@ -134,6 +167,7 @@ namespace ImageSim.ViewModels
         private async Task AddFilesWithDialog(IEnumerable<string> files)
         {
             var ctrl = await DialogService.ShowProgressAsync(this, "Adding files...", "Added 0 files", true);
+            await LinkExternalProgress(ctrl);
             ctrl.SetIndeterminate();
 
             var ch = Channel.CreateBounded<string>(new BoundedChannelOptions(20)
@@ -203,6 +237,7 @@ namespace ImageSim.ViewModels
         private async Task<OperationResult<HashConflictCollectionVM>> HandleCompareHashesAsync()
         {
             var ctrl = await DialogService.ShowProgressAsync(this, "Calculating hashes...", "Hashed 0 files", true);
+            await LinkExternalProgress(ctrl);
 
             int processed = 0;
             var total = FilesVM.LocatedFiles.Count;
@@ -277,6 +312,8 @@ namespace ImageSim.ViewModels
         private async void HandleCompareDCTImageHashes()
         {           
             var ctrl = await DialogService.ShowProgressAsync(this, "Matching images...", "Preparing...", true);
+            await LinkExternalProgress(ctrl);
+
             var algorithm = new DCTImageSimilarityAlgorithm();
             algorithm.Options.ClampSize = new Size(512, 512);
             var cachedAlg = algorithm.WithPersistentCache(FileStorage);
@@ -415,6 +452,7 @@ namespace ImageSim.ViewModels
         private async void HandleSyncCache()
         {
             var ctrl = await DialogService.ShowProgressAsync(this, "Compacting cache...", "Searching for orphaned cache records...");
+            await LinkExternalProgress(ctrl);
             ctrl.SetProgress(0);
 
             var currentFolder = FilesVM.LocatedFiles.ToHashSet();
