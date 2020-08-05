@@ -24,6 +24,9 @@ namespace ImageSim.ViewModels
             {
                 if (Set(ref currentConflict, value))
                 {
+                    var last = Conflicts.LastOrDefault();
+                    currentConflict.IsLastConflict = (currentConflict == last);
+
                     NextConflictCommand.RaiseCanExecuteChanged();
                     PreviousConflictCommand.RaiseCanExecuteChanged();
                     RaisePropertyChanged(nameof(CurrentIndex));
@@ -108,12 +111,6 @@ namespace ImageSim.ViewModels
                     break;
                 default:
                     break;
-            }
-
-            var last = Conflicts.LastOrDefault();
-            foreach (var item in Conflicts)
-            {
-                item.IsLastConflict = (item == last);
             }
         }
     }

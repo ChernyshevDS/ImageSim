@@ -325,47 +325,72 @@ namespace ImageSim.ViewModels
                 FullMode = BoundedChannelFullMode.Wait
             });
 
+            var progressChannel = Channel.CreateBounded<int>(new BoundedChannelOptions(nReaders) 
+            { 
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.DropOldest
+            });
+
             var N = paths.Count - 1;
             if (N <= 0)
                 throw new ArgumentException("Not enough files provided", nameof(paths));
             
             var nPairs = N * (N + 1) / 2;
             var nProcessed = 0;
+            var nRunningReaders = 0;
 
-            var nTasks = nReaders + 1;
-            var tasks = new Task[nTasks];
+            var tasks = new List<Task>(nReaders);
 
             var bag = new ConcurrentBag<SimilarityIdx>();
 
             for (int i = 0; i < nReaders; i++)
             {
-                tasks[i] = Task.Run(async () => {
-                    while (await ch.Reader.WaitToReadAsync())
+                var readTask = Task.Run(async () => {
+                    var nRun = Interlocked.Increment(ref nRunningReaders);
+                    System.Diagnostics.Debug.WriteLine($"Started: {nRun}");
+                    await foreach (var pair in ch.Reader.ReadAllAsync())
                     {
-                        var pair = await ch.Reader.ReadAsync();
                         var metric = similarityAlg.GetSimilarity(pair.Item1, pair.Item2);
                         if(metric >= threshold)
                             bag.Add(new SimilarityIdx(pair.Item1, pair.Item2, metric));
 
                         var proc = Interlocked.Increment(ref nProcessed);
-                        if (proc < N)
-                        {
-                            var progress = (double)proc / N;
-                            ctrl.SetMessage($"Hashed {proc} of {N} images");
-                            ctrl.SetProgress(progress);
-                        }
-                        else 
-                        {
-                            var progress = (double)proc / nPairs;
-                            ctrl.SetMessage($"Processed {proc} of {nPairs} image pairs");
-                            ctrl.SetProgress(progress);
-                        }
-                        
-                        
+                        await progressChannel.Writer.WriteAsync(proc);
+                    }
+
+                    var running = Interlocked.Decrement(ref nRunningReaders);
+                    System.Diagnostics.Debug.WriteLine($"Running: {running}");
+                    if (running == 0)
+                    {
+                        progressChannel.Writer.Complete();
                     }
                 });
+                tasks.Add(readTask);
             }
-            
+
+            var reporter = Task.Run(async () => 
+            {
+                while (await progressChannel.Reader.WaitToReadAsync())
+                {
+                    var proc = await progressChannel.Reader.ReadAsync();
+                    if (proc < N)
+                    {
+                        var progress = (double)proc / N;
+                        ctrl.SetMessage($"Hashed {proc} of {N} images");
+                        ctrl.SetProgress(progress);
+                    }
+                    else
+                    {
+                        var progress = (double)proc / nPairs;
+                        ctrl.SetMessage($"Processed {proc} of {nPairs} image pairs");
+                        ctrl.SetProgress(progress);
+                    }
+                    await Task.Delay(100);
+                }
+                await Task.Delay(100);
+            });
+
             var producer = Task.Run(async () =>
             {
                 foreach (var pair in pairs)
@@ -379,19 +404,24 @@ namespace ImageSim.ViewModels
                 }
                 ch.Writer.Complete();
             });
-            
-            tasks[nTasks - 1] = producer;
-            await Task.WhenAll(tasks);
+
+            tasks.Add(producer);
+            tasks.Add(reporter);
+            await Task.WhenAll(tasks.ToArray());
 
             if (ctrl.IsCanceled)
                 return new OperationResult<ConflictCollectionVM>(true, null);
 
             ctrl.SetIndeterminate();
             ctrl.SetMessage("Sorting results by similarity metric...");
+
+            await Task.Yield();
             var list = bag.ToList();
             list.Sort((x, y) => Math.Sign(y.Similarity - x.Similarity));    //sort by descending similarity
             
             ctrl.SetMessage("Building the view...");
+            
+            await Task.Yield();
             var cvm = new ConflictCollectionVM();
             foreach (var item in list)
             {
