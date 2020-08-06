@@ -1,6 +1,6 @@
 # ImageSim
 
-ImageSim is a small WPF desktop application intended for searching duplicates or similar images on your PC. Image similarity calculation is based on perceptual hash. Implementations of perceptual hashes are ported from [pHash lib](www.phash.org).
+ImageSim is a small WPF desktop application intended for searching duplicates or similar images on your PC. Image similarity calculation is based on perceptual hash. Implementations of perceptual hashes are ported from [pHash lib](http://phash.org/).
 
 ## Usage
 
