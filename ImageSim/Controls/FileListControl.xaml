@@ -10,6 +10,8 @@
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
         <vm:BindingProxy x:Key="Proxy" Data="{Binding}"/>
+
+        
     </UserControl.Resources>
     
     <Grid>
@@ -17,6 +19,7 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="2.5*"/>
+            <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         
         <ListBox Grid.Column="0" ItemsSource="{Binding LocatedFiles}" IsSynchronizedWithCurrentItem="True" 
@@ -49,5 +52,21 @@
                     VerticalAlignment="Stretch" Style="{DynamicResource MahApps.Styles.GridSplitter}"/>
 
         <ContentControl Grid.Column="2" Content="{Binding FileDetailsVM}" Focusable="False" Margin="10"/>
+
+        <TreeView Grid.Column="3" ItemsSource="{Binding Source={StaticResource Locator}, Path=FileTreeVM.Entries}"
+                  Style="{StaticResource MahApps.Styles.TreeView.Virtualized}">
+            <TreeView.Resources>
+                <HierarchicalDataTemplate DataType="{x:Type vm:FolderTreeEntryVM}" ItemsSource="{Binding VisibleChildren}">
+                    <TextBlock Text="{Binding VisibleName}" ToolTip="{Binding FullPath}"/>
+                </HierarchicalDataTemplate>
+                <HierarchicalDataTemplate DataType="{x:Type vm:FileTreeEntryVM}">
+                    <TextBlock Text="{Binding Name}" ToolTip="{Binding FullPath}"/>
+                </HierarchicalDataTemplate>
+            </TreeView.Resources>
+        </TreeView>
+        <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Bottom">
+            <Button Command="{Binding Source={StaticResource Locator}, Path=FileTreeVM.ZipCommand}">Zip</Button>
+            <Button Command="{Binding Source={StaticResource Locator}, Path=FileTreeVM.UnzipCommand}">Unzip</Button>
+        </StackPanel>
     </Grid>
 </UserControl>

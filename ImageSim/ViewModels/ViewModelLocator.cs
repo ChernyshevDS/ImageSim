@@ -31,10 +31,12 @@ namespace ImageSim.ViewModels
             SimpleIoc.Default.Register<MainVM>();
             SimpleIoc.Default.Register<FileListVM>();
             SimpleIoc.Default.Register<TaskBarProgressIndicatorVM>(() => taskbarService);
+            SimpleIoc.Default.Register<FileTreeVM>();
         }
 
         public MainVM MainVM => SimpleIoc.Default.GetInstance<MainVM>();
         public FileListVM FilesVM => SimpleIoc.Default.GetInstance<FileListVM>();
         public TaskBarProgressIndicatorVM TaskBarVM => SimpleIoc.Default.GetInstance<TaskBarProgressIndicatorVM>();
+        public FileTreeVM FileTreeVM => SimpleIoc.Default.GetInstance<FileTreeVM>();
     }
 }

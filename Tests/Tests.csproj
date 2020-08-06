@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ImageSim\ImageSim.csproj" />
     <ProjectReference Include="..\PHash\PHash.csproj" />
   </ItemGroup>
 

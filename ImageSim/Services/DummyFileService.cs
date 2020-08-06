@@ -5,7 +5,10 @@ namespace ImageSim.Services
 {
     public class DummyFileService : IFileService
     {
-        public void DeleteFileToBin(string path) => throw new NotImplementedException();
+        public void DeleteFileToBin(string path) 
+        { 
+            System.Diagnostics.Debug.WriteLine("DummyFileService.DeleteFileToBin: " + path);
+        }
 
         public IEnumerable<string> EnumerateDirectory(string folder, Predicate<string> filter)
         {
