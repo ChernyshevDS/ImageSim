@@ -4,9 +4,11 @@ using GalaSoft.MvvmLight.Messaging;
 using ImageSim.Messages;
 using ImageSim.Services;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -234,6 +236,34 @@ namespace ImageSim.ViewModels
             }
         }
 
+        /// <summary>
+        /// Insert new entry, keeping collecion sorted. Folders go first, files - next.
+        /// Assuming <paramref name="entries"/> is sorted.
+        /// </summary>
+        /// <param name="entries">Sorted collection of filesystem entries</param>
+        /// <param name="newEntry">Entry to be inserted, keeping collection sorted</param>
+        /// <returns>inse</returns>
+        private void InsertSorted(IList<TreeEntryVM> entries, TreeEntryVM newEntry)
+        {
+            if (newEntry is FolderTreeEntryVM folder)
+            {
+                var folders = entries.TakeWhile(x => x is FolderTreeEntryVM).Select(x => x.Name).ToArray();
+                var index = Array.BinarySearch(folders, folder.Name);
+                if (index > 0)
+                    throw new InvalidOperationException("Collection already has folder with such name");
+                entries.Insert(~index, newEntry);
+            }
+            else
+            {
+                var foldersCount = entries.TakeWhile(x => x is FolderTreeEntryVM).Count();
+                var files = entries.Skip(foldersCount).Select(x => x.Name).ToArray();
+                var index = Array.BinarySearch(files, newEntry.Name);
+                if (index > 0)
+                    throw new InvalidOperationException("Collection already has folder with such name");
+                entries.Insert(~index, newEntry);
+            }
+        }
+
         public void InsertFile(string path)
         {
             var parts = SplitPath(path);
@@ -249,7 +279,8 @@ namespace ImageSim.ViewModels
                 if (folder == null)
                 {
                     var fentry = CreateFolderEntry(currentPath);
-                    currentEntry.Children.Add(fentry);
+                    //currentEntry.Children.Add(fentry);
+                    InsertSorted(currentEntry.Children, fentry);
                     currentEntry = fentry;
                 }
                 else
@@ -258,7 +289,8 @@ namespace ImageSim.ViewModels
                 }
             }
             var fileEntry = CreateFileEntry(path);
-            currentEntry.Children.Add(fileEntry);
+            //currentEntry.Children.Add(fileEntry);
+            InsertSorted(currentEntry.Children, fileEntry);
         }
 
         public bool RemoveEntry(string path)
@@ -359,8 +391,7 @@ namespace ImageSim.ViewModels
                 
                 VisibleChildren = childFolder.VisibleChildren;
                 VisibleName = Path.Combine(Name, childFolder.VisibleName);
-                
-                //return true;
+                IsZipped = true;
             }
             else 
             {
@@ -371,7 +402,7 @@ namespace ImageSim.ViewModels
 
                 VisibleChildren = Children;
                 VisibleName = Name;
-                //return false;
+                IsZipped = false;
             }
         }
 
@@ -379,10 +410,36 @@ namespace ImageSim.ViewModels
         {
             VisibleName = Name;
             VisibleChildren = Children;
+            IsZipped = false;
             foreach (var item in Children.OfType<FolderTreeEntryVM>())
             {
                 item.Unzip();
             }
         }
+    }
+
+    public class SortedObservableCollection<T> : ICollection<T>, ICollection, IReadOnlyCollection<T>, IReadOnlyList<T>, INotifyCollectionChanged, INotifyPropertyChanged
+    {
+        private readonly List<T> list = new List<T>();
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        public event NotifyCollectionChangedEventHandler CollectionChanged;
+
+        protected virtual void OnCollectionChanged(NotifyCollectionChangedEventArgs e)
+        {
+            CollectionChanged?.Invoke(this, e);
+        }
+        protected virtual void OnPropertyChanged(PropertyChangedEventArgs e)
+        {
+            PropertyChanged?.Invoke(this, e);
+        }
+
+        public SortedObservableCollection(IComparer<T> comparer)
+        {
+            
+        }
+
+        public int IndexOf(T item) { }
+        public void RemoveAt(int index) { }
     }
 }
