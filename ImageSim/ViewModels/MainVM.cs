@@ -311,8 +311,28 @@ namespace ImageSim.ViewModels
             }
         }
 
+        private async Task<double?> PromptForThreshold()
+        {
+            var thresholdStr = await DialogService.ShowInputAsync(this, "Enter similarity threshold",
+                "Please, enter minimum similarity value from 0 to 1:", new MetroDialogSettings() { DefaultText = "0.75" });
+            if (string.IsNullOrEmpty(thresholdStr))
+                return null;
+
+            if (!double.TryParse(thresholdStr, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double threshold))
+            {
+                await DialogService.ShowMessageAsync(this, "Error", $"Can't convert text '{thresholdStr}' to number");
+                return null;
+            }
+            return threshold;
+        }
+
         private async void HandleCompareDCTImageHashes()
-        {           
+        {
+            var threshold = await PromptForThreshold();
+            if (!threshold.HasValue)
+                return;
+
             var ctrl = await DialogService.ShowProgressAsync(this, "Matching images...", "Preparing...", true);
             await LinkExternalProgress(ctrl);
 
@@ -321,7 +341,7 @@ namespace ImageSim.ViewModels
             var cachedAlg = algorithm.WithPersistentCache(FileStorage);
 
             var images = FilesVM.LocatedFiles.Where(x => VMHelper.IsImageExtension(Path.GetExtension(x))).ToList();
-            var result = await BuildConflictsVM(ctrl, images, cachedAlg, 0.75);
+            var result = await BuildConflictsVM(ctrl, images, cachedAlg, threshold.Value);
             await ctrl.CloseAsync();
 
             if (result.IsCancelled)
@@ -340,14 +360,9 @@ namespace ImageSim.ViewModels
 
         private async void HandleCompareMarrHashes()
         {
-            var thresholdStr = await DialogService.ShowInputAsync(this, "Enter similarity threshold", 
-                "Please, enter minimum similarity value from 0 to 1:", new MetroDialogSettings() { DefaultText = "0.75" });
-            if (!double.TryParse(thresholdStr, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double threshold))
-            {
-                await DialogService.ShowMessageAsync(this, "Error", $"Can't convert text '{thresholdStr}' to number");
+            var threshold = await PromptForThreshold();
+            if (!threshold.HasValue)
                 return;
-            }
 
             var ctrl = await DialogService.ShowProgressAsync(this, "Matching images...", "Preparing...", true);
             await LinkExternalProgress(ctrl);
@@ -356,7 +371,7 @@ namespace ImageSim.ViewModels
             var cachedAlg = algorithm.WithPersistentCache(FileStorage);
 
             var images = FilesVM.LocatedFiles.Where(x => VMHelper.IsImageExtension(Path.GetExtension(x))).ToList();
-            var result = await BuildConflictsVM(ctrl, images, cachedAlg, 0.70);
+            var result = await BuildConflictsVM(ctrl, images, cachedAlg, threshold.Value);
             await ctrl.CloseAsync();
 
             if (result.IsCancelled)

@@ -188,6 +188,11 @@
 
                         <StackPanel Grid.Column="0" Orientation="Vertical" Margin="10"
                                     HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                            <Border x:Name="firstSize" BorderBrush="Red" BorderThickness="1" Width="25" Height="25" Visibility="Collapsed"
+                                    Background="Transparent" ToolTip="This image has larger resolution">
+                                <TextBlock Text="S" FontWeight="Bold" FontSize="16" 
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
                             <Border x:Name="firstQual" BorderBrush="LimeGreen" BorderThickness="1" Width="25" Height="25" Visibility="Collapsed"
                                     Background="Transparent" ToolTip="This image has better area to file size ratio">
                                 <TextBlock Text="R" FontWeight="Bold" FontSize="16" 
@@ -197,6 +202,11 @@
 
                         <StackPanel Grid.Column="1" Orientation="Vertical" Margin="10"
                                     HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                            <Border x:Name="secSize" BorderBrush="Red" BorderThickness="1" Width="25" Height="25" Visibility="Collapsed"
+                                    Background="Transparent" ToolTip="This image has larger resolution">
+                                <TextBlock Text="S" FontWeight="Bold" FontSize="16" 
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
                             <Border x:Name="secQual" BorderBrush="LimeGreen" BorderThickness="1" Width="25" Height="25"
                                     Background="Transparent" ToolTip="This image has better area to file size ratio">
                                 <TextBlock Text="R" FontWeight="Bold" FontSize="16" 
@@ -221,10 +231,60 @@
                             </MultiBinding>
                         </DataTrigger.Binding>
                         <DataTrigger.Setters>
-                            <Setter TargetName="firstSize" Property="Visibility" Value="Visible"/>
-                            <Setter TargetName="secSize" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="firstQual" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="secQual" Property="Visibility" Value="Collapsed"/>
                         </DataTrigger.Setters>
                     </DataTrigger>
+
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Value="True">
+                                <Condition.Binding>
+                                    <MultiBinding Converter="{conv:ArithmeticComparisonConverter}" ConverterParameter="G">
+                                        <Binding Path="FirstImage.Width" Mode="OneWay"/>
+                                        <Binding Path="SecondImage.Width" Mode="OneWay"/>
+                                    </MultiBinding>
+                                </Condition.Binding>
+                            </Condition>
+                            <Condition Value="True">
+                                <Condition.Binding>
+                                    <MultiBinding Converter="{conv:ArithmeticComparisonConverter}" ConverterParameter="G">
+                                        <Binding Path="FirstImage.Height" Mode="OneWay"/>
+                                        <Binding Path="SecondImage.Height" Mode="OneWay"/>
+                                    </MultiBinding>
+                                </Condition.Binding>
+                            </Condition>
+                        </MultiDataTrigger.Conditions>
+                        <MultiDataTrigger.Setters>
+                            <Setter TargetName="firstSize" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="secSize" Property="Visibility" Value="Collapsed"/>
+                        </MultiDataTrigger.Setters>
+                    </MultiDataTrigger>
+
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Value="True">
+                                <Condition.Binding>
+                                    <MultiBinding Converter="{conv:ArithmeticComparisonConverter}" ConverterParameter="L">
+                                        <Binding Path="FirstImage.Width" Mode="OneWay"/>
+                                        <Binding Path="SecondImage.Width" Mode="OneWay"/>
+                                    </MultiBinding>
+                                </Condition.Binding>
+                            </Condition>
+                            <Condition Value="True">
+                                <Condition.Binding>
+                                    <MultiBinding Converter="{conv:ArithmeticComparisonConverter}" ConverterParameter="L">
+                                        <Binding Path="FirstImage.Height" Mode="OneWay"/>
+                                        <Binding Path="SecondImage.Height" Mode="OneWay"/>
+                                    </MultiBinding>
+                                </Condition.Binding>
+                            </Condition>
+                        </MultiDataTrigger.Conditions>
+                        <MultiDataTrigger.Setters>
+                            <Setter TargetName="firstSize" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="secSize" Property="Visibility" Value="Visible"/>
+                        </MultiDataTrigger.Setters>
+                    </MultiDataTrigger>
                 </DataTemplate.Triggers>
             </DataTemplate>
 

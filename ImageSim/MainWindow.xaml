@@ -17,6 +17,26 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="boolToVis"/>
         <conv:BooleanToVisibilityConverter x:Key="invBoolToVis" IsInverted="True"/>
+
+        <Style TargetType="MenuItem" BasedOn="{StaticResource MahApps.Styles.MenuItem}">
+            <Setter Property="ToolTipService.Placement" Value="Right"/>
+        </Style>
+        
+        <Style TargetType="ToolTip">
+            <Setter Property="MaxWidth" Value="400"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border BorderBrush="{StaticResource MahApps.Brushes.Accent}" BorderThickness="1"
+                                Background="White">
+                            <TextBlock Text="{TemplateBinding Content}" Margin="10,4" TextWrapping="Wrap"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <mah:MetroWindow.LeftWindowCommands>
@@ -24,22 +44,26 @@
             <mah:DropDownButton Content="Files">
                 <mah:DropDownButton.Items>
                     <MenuItem Header="Add files..." ToolTip="Add files to comparison" 
-                              ToolTipService.Placement="Right" Command="{Binding AddFilesCommand}"/>
+                              Command="{Binding AddFilesCommand}"/>
                     <MenuItem Header="Add from folder..." ToolTip="Add all files from selected folder to comparison" 
-                              ToolTipService.Placement="Right" Command="{Binding AddFromFolderCommand}"/>
+                              Command="{Binding AddFromFolderCommand}"/>
                     <MenuItem Header="Drop all files" ToolTip="Remove all loaded files from comparison"
-                              ToolTipService.Placement="Right" Command="{Binding DropFilesCommand}"/>
+                              Command="{Binding DropFilesCommand}"/>
                 </mah:DropDownButton.Items>
             </mah:DropDownButton>
             <mah:DropDownButton Content="Tools">
                 <mah:DropDownButton.Items>
-                    <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"/>
-                    <MenuItem Header="Find similar images (DCT)" Command="{Binding CheckSimilarDCTCommand}"/>
-                    <MenuItem Header="Find similar images (Marr)" Command="{Binding CheckSimilarMarrCommand}"/>
-                    <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"/>
+                    <MenuItem Header="Find same files by hash" Command="{Binding CompareHashesCommand}"
+                              ToolTip="Find same files by MD5 hash. Works for any file type."/>
+                    <MenuItem Header="Find similar images (DCT)" Command="{Binding CheckSimilarDCTCommand}"
+                              ToolTip="Similarity metric based on discrete cosine transform (DCT) of frequency spectrum data. Robust enough against small compressions, blur and rotations. A bit prone to false positives."/>
+                    <MenuItem Header="Find similar images (Marr)" Command="{Binding CheckSimilarMarrCommand}"
+                              ToolTip="Similarity metric based on Marr wavelets. Makes use of edge information with particular emphasis on corners. Less prone to false positives than DCT hash, but bad at handling rotated images."/>
+                    <Separator/>
+                    <MenuItem Header="Clear cache" Command="{Binding ClearCacheCommand}"
+                              ToolTip="Removes ALL cached records, causing all hashing to be made from scratch on next run."/>
                     <MenuItem Header="Shrink cache" Command="{Binding SyncCacheCommand}" 
-                              ToolTipService.Placement="Right" ToolTip="Remove cache records for files not listed 
-                              in currently loaded list or non-existent or modified files"/>
+                              ToolTip="Remove cache records for files not listed in currently loaded list or non-existent or modified files"/>
                 </mah:DropDownButton.Items>
             </mah:DropDownButton>
         </mah:WindowCommands>
