@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -19,15 +20,14 @@ namespace ImageSim.ViewModels
     public class FileListVM : ViewModelBase
     {
         private readonly IFileService FileService;
-        private readonly ObservableCollection<string> Files = new ObservableCollection<string>();
-        private readonly HashSet<string> FileSet = new HashSet<string>();
+        private readonly SortedObservableCollection<string> Files = new SortedObservableCollection<string>();
         
         private RelayCommand<string> deleteFileCommand;
         private RelayCommand<string> excludeFileCommand;
         private string selectedFile;
         private ViewModelBase fileDetailsVM = new EmptyDetailsVM();
 
-        public ReadOnlyObservableCollection<string> LocatedFiles { get; }
+        public ReadOnlySortedObservableCollection<string> LocatedFiles { get; }
 
         public RelayCommand<string> DeleteFileCommand => deleteFileCommand ??= new RelayCommand<string>(DeleteFile);
         public RelayCommand<string> ExcludeFileCommand => excludeFileCommand ??= new RelayCommand<string>(ExcludeFile);
@@ -49,7 +49,7 @@ namespace ImageSim.ViewModels
         public FileListVM(IFileService files)
         {
             this.FileService = files;
-            LocatedFiles = new ReadOnlyObservableCollection<string>(Files);
+            LocatedFiles = new ReadOnlySortedObservableCollection<string>(Files);
 
             if (IsInDesignMode)
             {
@@ -61,8 +61,6 @@ namespace ImageSim.ViewModels
                 Files.Add("D:\\blabla.txt");
                 return;
             }
-
-            Files.CollectionChanged += Files_CollectionChanged;
 
             Messenger.Default.Register<CurrentFileChangedMessage>(this, x =>
             {
@@ -83,33 +81,6 @@ namespace ImageSim.ViewModels
                         break;
                 }
             });
-        }
-
-        private void Files_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
-        {
-            var newItem = e.NewItems?.Cast<string>().FirstOrDefault();
-            var oldItem = e.OldItems?.Cast<string>().FirstOrDefault();
-
-            switch (e.Action)
-            {
-                case NotifyCollectionChangedAction.Add:
-                    FileSet.Add(newItem);
-                    break;
-                case NotifyCollectionChangedAction.Remove:
-                    FileSet.Remove(oldItem);
-                    break;
-                case NotifyCollectionChangedAction.Replace:
-                    FileSet.Remove(oldItem);
-                    FileSet.Add(newItem);
-                    break;
-                case NotifyCollectionChangedAction.Move:
-                    break;
-                case NotifyCollectionChangedAction.Reset:
-                    FileSet.Clear();
-                    break;
-                default:
-                    break;
-            }
         }
 
         private void ExcludeFile(string path)
@@ -146,7 +117,7 @@ namespace ImageSim.ViewModels
 
         public async Task<bool> AddFileAsync(string path)
         {
-            var canAdd = await Task.Run(() => !FileSet.Contains(path));
+            var canAdd = await Task.Run(() => !Files.Contains(path));
             if (canAdd)
                 Files.Add(path);
             return canAdd;
@@ -159,19 +130,56 @@ namespace ImageSim.ViewModels
         }
     }
 
+    public class TreeEntryComparer : IComparer<TreeEntryVM>
+    {
+        public int Compare([AllowNull] TreeEntryVM x, [AllowNull] TreeEntryVM y)
+        {
+            if (x == null && y == null)
+                return 0;
+            if (x == null && y != null)
+                return -1;
+            if (x != null && y == null)
+                return 1;
+
+            //non-nulls here, folders first
+            if (x.IsFolder && !y.IsFolder)
+                return -1;
+            if (!x.IsFolder && y.IsFolder)
+                return 1;
+
+            return x.Name.CompareTo(y.Name);
+        }
+    }
+
     public class FileTreeVM : ViewModelBase
     {
         private readonly FileListVM _source;
         private readonly TreeEntryVM _root;
-
         private RelayCommand zipCommand;
         private RelayCommand unzipCommand;
 
-        public ObservableCollection<TreeEntryVM> Entries { get; }
+        public SortedObservableCollection<TreeEntryVM> Entries { get; }
+        public RelayCommand ZipCommand => zipCommand ??= new RelayCommand(Zip);
+        public RelayCommand UnzipCommand => unzipCommand ??= new RelayCommand(Unzip);
 
-        public RelayCommand ZipCommand => zipCommand ??= new RelayCommand(HandleZip);
+        private readonly Action delayed_zip;
 
-        private void HandleZip()
+        public FileTreeVM(FileListVM source)
+        {
+            this._source = source;
+            _root = new TreeEntryVM()
+            {
+                Children = new SortedObservableCollection<TreeEntryVM>(new TreeEntryComparer())
+            };
+            Entries = _root.Children;
+
+            BuildTree(source.LocatedFiles);
+            CollectionChangedEventManager.AddHandler(source.LocatedFiles, FileTreeVM_CollectionChanged);
+
+            delayed_zip = new Action(Zip).Debounce(200);
+        }
+
+        public void Zip()
         {
             foreach (var item in _root.Children.OfType<FolderTreeEntryVM>())
             {
@@ -179,27 +187,12 @@ namespace ImageSim.ViewModels
             }
         }
 
-        public RelayCommand UnzipCommand => unzipCommand ??= new RelayCommand(HandleUnzip);
-
-        private void HandleUnzip()
+        public void Unzip()
         {
             foreach (var item in _root.Children.OfType<FolderTreeEntryVM>())
             {
                 item.Unzip();
             }
-        }
-
-        public FileTreeVM(FileListVM source)
-        {
-            this._source = source;
-            _root = new TreeEntryVM()
-            {
-                Children = new ObservableCollection<TreeEntryVM>()
-            };
-            Entries = _root.Children;
-
-            BuildTree(source.LocatedFiles);
-            CollectionChangedEventManager.AddHandler(source.LocatedFiles, FileTreeVM_CollectionChanged);
         }
 
         private void FileTreeVM_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
@@ -226,6 +219,8 @@ namespace ImageSim.ViewModels
                 default:
                     break;
             }
+
+            delayed_zip();
         }
 
         private void BuildTree(IEnumerable<string> paths)
@@ -236,35 +231,7 @@ namespace ImageSim.ViewModels
             }
         }
 
-        /// <summary>
-        /// Insert new entry, keeping collecion sorted. Folders go first, files - next.
-        /// Assuming <paramref name="entries"/> is sorted.
-        /// </summary>
-        /// <param name="entries">Sorted collection of filesystem entries</param>
-        /// <param name="newEntry">Entry to be inserted, keeping collection sorted</param>
-        /// <returns>inse</returns>
-        private void InsertSorted(IList<TreeEntryVM> entries, TreeEntryVM newEntry)
-        {
-            if (newEntry is FolderTreeEntryVM folder)
-            {
-                var folders = entries.TakeWhile(x => x is FolderTreeEntryVM).Select(x => x.Name).ToArray();
-                var index = Array.BinarySearch(folders, folder.Name);
-                if (index > 0)
-                    throw new InvalidOperationException("Collection already has folder with such name");
-                entries.Insert(~index, newEntry);
-            }
-            else
-            {
-                var foldersCount = entries.TakeWhile(x => x is FolderTreeEntryVM).Count();
-                var files = entries.Skip(foldersCount).Select(x => x.Name).ToArray();
-                var index = Array.BinarySearch(files, newEntry.Name);
-                if (index > 0)
-                    throw new InvalidOperationException("Collection already has folder with such name");
-                entries.Insert(~index, newEntry);
-            }
-        }
-
-        public void InsertFile(string path)
+        private void InsertFile(string path)
         {
             var parts = SplitPath(path);
             var currentEntry = _root;
@@ -279,8 +246,7 @@ namespace ImageSim.ViewModels
                 if (folder == null)
                 {
                     var fentry = CreateFolderEntry(currentPath);
-                    //currentEntry.Children.Add(fentry);
-                    InsertSorted(currentEntry.Children, fentry);
+                    currentEntry.Children.Add(fentry);
                     currentEntry = fentry;
                 }
                 else
@@ -289,11 +255,10 @@ namespace ImageSim.ViewModels
                 }
             }
             var fileEntry = CreateFileEntry(path);
-            //currentEntry.Children.Add(fileEntry);
-            InsertSorted(currentEntry.Children, fileEntry);
+            currentEntry.Children.Add(fileEntry);
         }
 
-        public bool RemoveEntry(string path)
+        private bool RemoveEntry(string path)
         {
             var currentEntry = _root;
             var parts = SplitPath(path);
@@ -347,15 +312,16 @@ namespace ImageSim.ViewModels
 
     public class TreeEntryVM : ViewModelBase
     {
-        private ObservableCollection<TreeEntryVM> children;
+        private SortedObservableCollection<TreeEntryVM> children;
         private string fullPath;
         private string name;
         private bool isExpanded;
 
-        public ObservableCollection<TreeEntryVM> Children { get => children; set => Set(ref children, value); }
+        public SortedObservableCollection<TreeEntryVM> Children { get => children; set => Set(ref children, value); }
         public string FullPath { get => fullPath; set => Set(ref fullPath, value); }
         public string Name { get => name; set => Set(ref name, value); }
         public bool IsExpanded { get => isExpanded; set => Set(ref isExpanded, value); }
+        public bool IsFolder { get; protected set; } = false;
 
         public override string ToString() => Name;
     }
@@ -371,16 +337,17 @@ namespace ImageSim.ViewModels
     public class FolderTreeEntryVM : TreeEntryVM
     {
         private bool isZipped;
-        private ObservableCollection<TreeEntryVM> visibleChildren;
+        private SortedObservableCollection<TreeEntryVM> visibleChildren;
         private string visibleName;
 
         public bool IsZipped { get => isZipped; protected set => Set(ref isZipped, value); }
         public string VisibleName { get => visibleName; protected set => Set(ref visibleName, value); }
-        public ObservableCollection<TreeEntryVM> VisibleChildren { get => visibleChildren; protected set => Set(ref visibleChildren, value); }
+        public SortedObservableCollection<TreeEntryVM> VisibleChildren { get => visibleChildren; protected set => Set(ref visibleChildren, value); }
 
         public FolderTreeEntryVM()
         {
-            Children = new ObservableCollection<TreeEntryVM>();
+            Children = new SortedObservableCollection<TreeEntryVM>(new TreeEntryComparer());
+            IsFolder = true;
         }
 
         public void Zip()
@@ -418,7 +385,7 @@ namespace ImageSim.ViewModels
         }
     }
 
-    public class SortedObservableCollection<T> : ICollection<T>, ICollection, IReadOnlyCollection<T>, IReadOnlyList<T>, INotifyCollectionChanged, INotifyPropertyChanged
+    public class SortedObservableCollection<T> : ICollection<T>, ICollection, IReadOnlyCollection<T>, IReadOnlyList<T>, IList<T>, IList, INotifyCollectionChanged, INotifyPropertyChanged
     {
         private readonly List<T> list;
         private readonly IComparer<T> comparer;
@@ -427,7 +394,7 @@ namespace ImageSim.ViewModels
         public bool IsReadOnly => ((ICollection<T>)list).IsReadOnly;
 
         #region ICollection<T> (partly)
-        public bool Contains(T item) => list.Contains(item);
+        public bool Contains(T item) => this.IndexOf(item) >= 0;
         public void CopyTo(T[] array, int arrayIndex) => list.CopyTo(array, arrayIndex);
         #endregion
 
@@ -460,6 +427,49 @@ namespace ImageSim.ViewModels
         }
         #endregion
 
+        #region IList
+        void IList<T>.Insert(int index, T item) => throw new InvalidOperationException();
+        T IList<T>.this[int index] { get => list[index]; set => throw new InvalidOperationException(); }
+
+        bool IList.IsFixedSize => false;
+        object IList.this[int index] { get => list[index]; set => throw new InvalidOperationException(); }
+
+        int IList.Add(object value)
+        {
+            if (!(value is T val))
+                throw new ArgumentException();
+
+            this.Add(val);
+            return this.IndexOf(val);
+        }
+
+        bool IList.Contains(object value)
+        {
+            if (!(value is T val))
+                return false;
+            return this.Contains(val);
+        }
+
+        int IList.IndexOf(object value)
+        {
+            if (!(value is T val))
+                return -1;
+            return this.IndexOf(val);
+        }
+
+        void IList.Insert(int index, object value)
+        {
+            throw new InvalidOperationException();
+        }
+
+        void IList.Remove(object value)
+        {
+            if (!(value is T val))
+                return;
+            this.Remove(val);
+        }
+        #endregion
+
         public SortedObservableCollection() : this(null, null) { }
         public SortedObservableCollection(IComparer<T> comparer) : this(null, comparer) { }
         public SortedObservableCollection(IEnumerable<T> source) : this(source, null) { }
@@ -480,7 +490,11 @@ namespace ImageSim.ViewModels
             }
         }
 
-        public int IndexOf(T item) => list.IndexOf(item);
+        public int IndexOf(T item) 
+        {
+            var index = list.BinarySearch(item, comparer);
+            return index < 0 ? -1 : index;
+        }
 
         public void Add(T item)
         {
@@ -525,5 +539,23 @@ namespace ImageSim.ViewModels
                 index = ~index;
             return index;
         }
+    }
+
+    public class ReadOnlySortedObservableCollection<T> : ReadOnlyCollection<T>, INotifyCollectionChanged, INotifyPropertyChanged
+    {
+        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected virtual void OnCollectionChanged(NotifyCollectionChangedEventArgs args) => CollectionChanged?.Invoke(this, args);
+        protected virtual void OnPropertyChanged(PropertyChangedEventArgs args) => PropertyChanged?.Invoke(this, args);
+
+        public ReadOnlySortedObservableCollection(SortedObservableCollection<T> list) : base(list)
+        {
+            ((INotifyCollectionChanged)Items).CollectionChanged += new NotifyCollectionChangedEventHandler(HandleCollectionChanged);
+            ((INotifyPropertyChanged)Items).PropertyChanged += new PropertyChangedEventHandler(HandlePropertyChanged);
+        }
+
+        private void HandlePropertyChanged(object sender, PropertyChangedEventArgs e) => OnPropertyChanged(e);
+        private void HandleCollectionChanged(object sender, NotifyCollectionChangedEventArgs e) => OnCollectionChanged(e);
     }
 }
