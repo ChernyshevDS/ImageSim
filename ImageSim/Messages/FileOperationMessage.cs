@@ -1,4 +1,5 @@
 ﻿using GalaSoft.MvvmLight.Messaging;
+using System.Collections.Generic;
 
 namespace ImageSim.Messages
 {
@@ -6,13 +7,19 @@ namespace ImageSim.Messages
 
     public class FileOperationMessage : MessageBase
     {
-        public FileOperationMessage(string path, FileOperation reason)
+        public FileOperationMessage(string file, FileOperation operation)
         {
-            FilePath = path;
-            Action = reason;
+            Files = new string[] { file };
+            Action = operation;
         }
 
+        public FileOperationMessage(IReadOnlyList<string> files, FileOperation operation)
+        {
+            Files = files;
+            Action = operation;
+        }
+
+        public IReadOnlyList<string> Files { get; }
         public FileOperation Action { get; }
-        public string FilePath { get; }
     }
 }

@@ -3,70 +3,72 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:ImageSim.Controls"
-             xmlns:conv="clr-namespace:ImageSim.Converters"
+             xmlns:tree="clr-namespace:ImageSim.ViewModels.FileTree"
              xmlns:vm="clr-namespace:ImageSim.ViewModels"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:FileListVM}"
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
         <vm:BindingProxy x:Key="Proxy" Data="{Binding}"/>
-
-        
     </UserControl.Resources>
     
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*" MinWidth="100"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="2.5*"/>
-            <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         
-        <ListBox Grid.Column="0" ItemsSource="{Binding LocatedFiles}" IsSynchronizedWithCurrentItem="True" 
-                 VirtualizingStackPanel.VirtualizationMode="Recycling"
-                 SelectedItem="{Binding SelectedFile, Mode=OneWayToSource}" MinWidth="200">
-            <ListBox.InputBindings>
-                <KeyBinding Key="Delete" Command="{Binding ExcludeFileCommand}" CommandParameter="{Binding SelectedFile}"/>
-            </ListBox.InputBindings>
+        <TreeView x:Name="treeView" Grid.Column="0" ItemsSource="{Binding Source={StaticResource Locator}, Path=FileTreeVM.Entries}"
+                  Style="{StaticResource MahApps.Styles.TreeView.Virtualized}">
+            <TreeView.ItemContainerStyle>
+                <Style TargetType="TreeViewItem" BasedOn="{StaticResource MahApps.Styles.TreeViewItem}">
+                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                    <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+                    
+                    <!--Disable automatic horizontal scroll-->
+                    <EventSetter Event="RequestBringIntoView" Handler="TreeViewItem_RequestBringIntoView"/>
+                    <EventSetter Event="Selected" Handler="TreeViewItem_Selected"/>
+                </Style>
+            </TreeView.ItemContainerStyle>
 
-            <ListBox.ItemTemplate>
-                <DataTemplate>
+            <TreeView.Resources>
+                <HierarchicalDataTemplate DataType="{x:Type tree:FolderTreeEntryVM}" ItemsSource="{Binding VisibleChildren}">
                     <Border Background="Transparent">
-                        <TextBlock Text="{Binding ., Converter={conv:FileNameFromPathConverter}}" ToolTip="{Binding}"/>
+                        <TextBlock Text="{Binding VisibleName}" ToolTip="{Binding FullPath}"/>
                         <Border.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Exclude" 
-                                    Command="{Binding Source={StaticResource Proxy}, Path=Data.ExcludeFileCommand}"
-                                    CommandParameter="{Binding}"/>
+                                    Command="{Binding Source={StaticResource Proxy}, Path=Data.ExcludePathCommand}"
+                                    CommandParameter="{Binding FullPath}"/>
                                 <MenuItem Header="Delete" 
-                                    Command="{Binding Source={StaticResource Proxy}, Path=Data.DeleteFileCommand}"
-                                    CommandParameter="{Binding}"/>
+                                    Command="{Binding Source={StaticResource Proxy}, Path=Data.DeletePathCommand}"
+                                    CommandParameter="{Binding FullPath}"/>
                             </ContextMenu>
                         </Border.ContextMenu>
                     </Border>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+                </HierarchicalDataTemplate>
+
+                <HierarchicalDataTemplate DataType="{x:Type tree:FileTreeEntryVM}">
+                    <Border Background="Transparent">
+                        <TextBlock Text="{Binding Name}" ToolTip="{Binding FullPath}"/>
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Exclude" 
+                                    Command="{Binding Source={StaticResource Proxy}, Path=Data.ExcludePathCommand}"
+                                    CommandParameter="{Binding FullPath}"/>
+                                <MenuItem Header="Delete" 
+                                    Command="{Binding Source={StaticResource Proxy}, Path=Data.DeletePathCommand}"
+                                    CommandParameter="{Binding FullPath}"/>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                    </Border>
+                </HierarchicalDataTemplate>
+            </TreeView.Resources>
+        </TreeView>
 
         <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" 
                     VerticalAlignment="Stretch" Style="{DynamicResource MahApps.Styles.GridSplitter}"/>
 
         <ContentControl Grid.Column="2" Content="{Binding FileDetailsVM}" Focusable="False" Margin="10"/>
-
-        <TreeView Grid.Column="3" ItemsSource="{Binding Source={StaticResource Locator}, Path=FileTreeVM.Entries}"
-                  Style="{StaticResource MahApps.Styles.TreeView.Virtualized}">
-            <TreeView.Resources>
-                <HierarchicalDataTemplate DataType="{x:Type vm:FolderTreeEntryVM}" ItemsSource="{Binding VisibleChildren}">
-                    <TextBlock Text="{Binding VisibleName}" ToolTip="{Binding FullPath}"/>
-                </HierarchicalDataTemplate>
-                <HierarchicalDataTemplate DataType="{x:Type vm:FileTreeEntryVM}">
-                    <TextBlock Text="{Binding Name}" ToolTip="{Binding FullPath}"/>
-                </HierarchicalDataTemplate>
-            </TreeView.Resources>
-        </TreeView>
-        <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Bottom">
-            <Button Command="{Binding Source={StaticResource Locator}, Path=FileTreeVM.ZipCommand}">Zip</Button>
-            <Button Command="{Binding Source={StaticResource Locator}, Path=FileTreeVM.UnzipCommand}">Unzip</Button>
-        </StackPanel>
     </Grid>
 </UserControl>

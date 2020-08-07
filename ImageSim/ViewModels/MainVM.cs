@@ -7,7 +7,6 @@ using ImageSim.Services;
 using MahApps.Metro.Controls.Dialogs;
 using Microsoft.Win32;
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -15,15 +14,11 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
-using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
 
 namespace ImageSim.ViewModels
 {
@@ -110,6 +105,78 @@ namespace ImageSim.ViewModels
                 var tab = x.ClosingTab;
                 Tabs.Remove(tab);
             });
+
+            Messenger.Default.Register<FileOperationMessage>(this, async msg =>
+            {
+                if (msg.Files.Count < 10)
+                {
+                    foreach (var file in msg.Files)
+                    {
+                        switch (msg.Action)
+                        {
+                            case FileOperation.Exclude:
+                                FilesVM.ExcludeFile(file);
+                                break;
+                            case FileOperation.Delete:
+                                FilesVM.DeleteFile(file);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+                else 
+                {
+                    switch (msg.Action)
+                    {
+                        case FileOperation.Exclude:
+                            await RemoveFilesWithDialog(msg.Files, false);
+                            break;
+                        case FileOperation.Delete:
+                            await RemoveFilesWithDialog(msg.Files, true);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            });
+        }
+
+        private async Task RemoveFilesWithDialog(IEnumerable<string> files, bool delete)
+        {
+            var total = files.Count();
+            var title = delete ? "Removing files..." : "Excluding files...";
+            
+            var ctrl = await DialogService.ShowProgressAsync(this, title, $"Removed 0 of {total}");
+            ctrl.SetProgress(0);
+            await LinkExternalProgress(ctrl);
+
+            var ch = Channel.CreateBounded<string>(new BoundedChannelOptions(10)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = true
+            });
+            var producer = Task.Run(async () =>
+            {
+                foreach (var file in files)
+                {
+                    await ch.Writer.WriteAsync(file);
+                }
+                ch.Writer.Complete();
+            });
+
+            var added = 0;
+            await foreach (var file in ch.Reader.ReadAllAsync())
+            {
+                if (delete)
+                    FilesVM.DeleteFile(file);
+                else
+                    FilesVM.ExcludeFile(file);
+                ctrl.SetMessage($"Added {++added} files");
+            }
+
+            await ctrl.CloseAsync();
         }
 
         private async Task LinkExternalProgress(ProgressDialogController ctrl)

@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using GalaSoft.MvvmLight.Ioc;
 using ImageSim.Services;
+using ImageSim.ViewModels.FileTree;
 using MahApps.Metro.Controls.Dialogs;
 
 namespace ImageSim.ViewModels

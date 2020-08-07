@@ -64,11 +64,8 @@ namespace ImageSim.ViewModels
             ConflictingFiles.CollectionChanged -= ConflictingFiles_CollectionChanged;
             try
             {
-                var toDelete = ConflictingFiles.Where(x => x != entry).ToList();
-                foreach (var item in toDelete)
-                {
-                    Messenger.Default.Send(new FileOperationMessage(item.FilePath, FileOperation.Delete));
-                }
+                var toDelete = ConflictingFiles.Where(x => x != entry).Select(x => x.FilePath).ToList();
+                Messenger.Default.Send(new FileOperationMessage(toDelete, FileOperation.Delete));
             }
             finally
             {
