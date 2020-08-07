@@ -1,4 +1,5 @@
 ﻿using ImageSim.ViewModels;
+using ImageSim.ViewModels.FileTree;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
