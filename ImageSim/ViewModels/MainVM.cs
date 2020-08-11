@@ -157,7 +157,6 @@ namespace ImageSim.ViewModels
                 SingleReader = true,
                 SingleWriter = true
             });
-
             var producer = Task.Run(async () =>
             {
                 foreach (var file in files)
