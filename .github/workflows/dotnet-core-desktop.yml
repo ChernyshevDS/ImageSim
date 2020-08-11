@@ -41,9 +41,7 @@ jobs:
         release_name="ImageSim-$tag-win-x64"
         
         dotnet publish ImageSim/ImageSim.csproj --runtime win-x64 -c Release -o ${release_name} --self-contained=false //p:CopyOutputSymbolsToPublishDirectory=false //p:DebugType=None
-        
-        find $release_name -type f -name '*.pdb' -exec rm {} +
-        
+               
         7z a -tzip "ImageSim-win-x64.zip" "./${release_name}/*"
         
         rm -r "$release_name"
