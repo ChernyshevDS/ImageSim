@@ -43,10 +43,11 @@ jobs:
         git fetch --prune --unshallow --tags
         tag=$(git describe --tags --always)
         release_name="ImageSim-$tag-win-x64"
+        echo "::set-env name=RELEASE_NAME::$release_name"
         
         dotnet publish ImageSim/ImageSim.csproj --runtime win-x64 -c Release -o ${release_name} --self-contained=false //p:CopyOutputSymbolsToPublishDirectory=false //p:DebugType=None
                
-        7z a -tzip "ImageSim-win-x64.zip" "./${release_name}/*"
+        7z a -tzip "${release_name}.zip" "./${release_name}/*"
         
         rm -r "$release_name"
     
@@ -70,6 +71,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: "ImageSim-win-x64.zip"
-        asset_name: ImageSim-win-x64.zip
+        asset_path: "${RELEASE_NAME}.zip"
+        asset_name: ${RELEASE_NAME}.zip
         asset_content_type: application/zip
