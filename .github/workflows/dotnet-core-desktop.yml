@@ -37,7 +37,7 @@ jobs:
       shell: bash
       run: |
         git fetch --prune --unshallow --tags
-        tag=$(git describe --always)
+        tag=$(git describe --tags --always)
         release_name="ImageSim-$tag-win-x64"
         
         dotnet publish ImageSim/ImageSim.csproj --runtime win-x64 -c Release -o ${release_name} --self-contained=false //p:CopyOutputSymbolsToPublishDirectory=false //p:DebugType=None
