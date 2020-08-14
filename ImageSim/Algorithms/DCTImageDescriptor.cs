@@ -2,7 +2,7 @@
 {
     public class DCTImageDescriptor : AbstractSerializableDescriptor
     {
-        public DCTImageDescriptor() { }
+        public DCTImageDescriptor() : base(null) { }
         public DCTImageDescriptor(byte[] data) : base(data) { }
     }
 }

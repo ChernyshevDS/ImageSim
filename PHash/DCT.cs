@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
 using OpenCvSharp;
 
@@ -114,5 +115,213 @@ namespace PHash
         double ph_dct_videohash_dist(ulong64* hashA, int N1,
                                                    ulong64* hashB, int N2,
                                                    int threshold = 21);*/
+    }
+
+    namespace CV
+    {
+        public interface IHashingAlgorithm<TFeature>
+        {
+            string Name { get; }
+            TFeature GetDescriptor(string path);
+            double GetSimilarity(TFeature left, TFeature right);
+        }
+
+        public interface ISerializableDescriptor
+        {
+            void Serialize(Stream stream);
+            void Deserialize(Stream stream);
+        }
+
+        internal static class Utils
+        {
+            public static Mat LoadImage(string filepath)
+            {
+                using var fs = new System.IO.FileStream(filepath, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+                return Mat.FromStream(fs, ImreadModes.Color);
+            }
+        }
+
+        public class DCT : IHashingAlgorithm<DCT.Descriptor>
+        {
+            private readonly OpenCvSharp.ImgHash.PHash impl;
+
+            public string Name => "DCTImageHash";
+
+            public class Descriptor : OpenCVMatDescriptor
+            {
+                internal Descriptor(Mat mat) : base(mat) { }
+                public Descriptor() : base(null) { }
+            }
+
+            public DCT()
+            {
+                impl = OpenCvSharp.ImgHash.PHash.Create();
+            }
+            
+            public Descriptor GetDescriptor(string path)
+            {
+                using var mat = Utils.LoadImage(path);
+                var ret = new Mat();
+                impl.Compute(mat, ret);
+                return new Descriptor(ret);
+            }
+
+            public double GetSimilarity(Descriptor hash1, Descriptor hash2)
+            {
+                const double max_distance = 64;
+                var distance = impl.Compare(hash1.Data, hash2.Data);
+                return 1.0 - (distance / max_distance);
+            }
+        }
+
+        public class Marr : IHashingAlgorithm<Marr.Descriptor>
+        {
+            public string Name => "MarrImageHash";
+
+            private readonly OpenCvSharp.ImgHash.MarrHildrethHash impl;
+
+            public Marr(float alpha = 2.0f, float scale = 1.0f)
+            {
+                impl = OpenCvSharp.ImgHash.MarrHildrethHash.Create(alpha, scale);
+            }
+
+            public void SetParameters(float alpha = 2.0f, float scale = 1.0f) 
+                => impl.SetKernelParam(alpha, scale);
+
+            public Descriptor GetDescriptor(string path)
+            {
+                using var mat = Utils.LoadImage(path);
+                var ret = new Mat();
+                impl.Compute(mat, ret);
+                return new Descriptor(ret);
+            }
+
+            public double GetSimilarity(Descriptor left, Descriptor right)
+            {
+                const double max_distance = 576;
+                var distance = impl.Compare(left.Data, right.Data);
+                return 1.0 - (distance / max_distance);
+            }
+
+            public class Descriptor : OpenCVMatDescriptor
+            {
+                internal Descriptor(Mat mat) : base(mat) { }
+                public Descriptor() : base(null) { }
+            }
+        }
+
+        public class Radial : IHashingAlgorithm<Radial.Descriptor>
+        {
+            public string Name => "RadialImageHash";
+
+            private readonly OpenCvSharp.ImgHash.RadialVarianceHash impl;
+
+            public double Sigma { get => impl.Sigma; set => impl.Sigma = value; }
+            public int NLines { get => impl.NumOfAngleLine; set => impl.NumOfAngleLine = value; }
+
+            public Radial(double sigma = 1.0, int nLines = 180)
+            {
+                impl = OpenCvSharp.ImgHash.RadialVarianceHash.Create(sigma, nLines);
+            }
+
+            public Descriptor GetDescriptor(string path)
+            {
+                using var mat = Utils.LoadImage(path);
+                var ret = new Mat();
+                impl.Compute(mat, ret);
+                return new Descriptor(ret);
+            }
+
+            public double GetSimilarity(Descriptor left, Descriptor right)
+            {
+                return impl.Compare(left.Data, right.Data);
+            }
+
+            public class Descriptor : OpenCVMatDescriptor
+            {
+                internal Descriptor(Mat mat) : base(mat) { }
+                public Descriptor() : base(null) { }
+            }
+        }
+
+        public class ColorMoment : IHashingAlgorithm<ColorMoment.Descriptor>
+        {
+            public string Name => "ColorMomentImageHash";
+
+            private readonly OpenCvSharp.ImgHash.ColorMomentHash impl 
+                = OpenCvSharp.ImgHash.ColorMomentHash.Create();
+
+            public Descriptor GetDescriptor(string path)
+            {
+                using var mat = Utils.LoadImage(path);
+                var ret = new Mat();
+                impl.Compute(mat, ret);
+                return new Descriptor(ret);
+            }
+
+            public double GetSimilarity(Descriptor left, Descriptor right)
+            {
+                //FIXME returns distance instead of similarity
+                return impl.Compare(left.Data, right.Data);
+            }
+
+            public class Descriptor : OpenCVMatDescriptor
+            {
+                internal Descriptor(Mat mat) : base(mat) { }
+                public Descriptor() : base(null) { }
+            }
+        }
+
+        public class BlockMean : IHashingAlgorithm<BlockMean.Descriptor>
+        {
+            public string Name => "BlockMeanImageHash";
+
+            private readonly OpenCvSharp.ImgHash.BlockMeanHash impl
+                = OpenCvSharp.ImgHash.BlockMeanHash.Create(OpenCvSharp.ImgHash.BlockMeanHashMode.Mode0);
+
+            public Descriptor GetDescriptor(string path)
+            {
+                using var mat = Utils.LoadImage(path);
+                var ret = new Mat();
+                impl.Compute(mat, ret);
+                return new Descriptor(ret);
+            }
+
+            public double GetSimilarity(Descriptor left, Descriptor right)
+            {
+                const double max_distance = 256;
+                var distance = impl.Compare(left.Data, right.Data);
+                return 1.0 - (distance / max_distance);
+            }
+
+            public class Descriptor : OpenCVMatDescriptor
+            {
+                internal Descriptor(Mat mat) : base(mat) { }
+                public Descriptor() : base(null) { }
+            }
+        }
+
+        public abstract class OpenCVMatDescriptor : ISerializableDescriptor
+        {
+            internal Mat Data { get; private set; }
+
+            protected OpenCVMatDescriptor(Mat data)
+            {
+                Data = data;
+            }
+
+            public virtual void Serialize(Stream stream)
+            {
+                Data.WriteToStream(stream, ".pgm", new ImageEncodingParam(ImwriteFlags.PxmBinary, 1));
+            }
+
+            public virtual void Deserialize(Stream stream)
+            {
+                if (Data != null)
+                    Data.Dispose();
+
+                Data = Mat.FromStream(stream, ImreadModes.Unchanged);
+            }
+        }
     }
 }
