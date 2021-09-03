@@ -50,13 +50,15 @@ namespace PHash
             }
 
             //graysc.blur((float) sigma);
-            graysc.GaussianBlur(Size.Zero, sigma, sigma, BorderTypes.Replicate);
+            graysc = graysc.GaussianBlur(Size.Zero, sigma, sigma, BorderTypes.Replicate);
 
             //(graysc / graysc.max()).pow(gamma);
+#warning Original code doesn't make use of gamma? Double check.
+            /*            
             graysc.MinMaxLoc(out double _, out double max_val);
             graysc /= max_val;
             Cv2.Pow(graysc, gamma, graysc);
-
+            */
             var projs = ph_radon_projections(graysc, N);
             var features = ph_feature_vector(projs);
             var digest = ph_dct(features);
@@ -67,7 +69,7 @@ namespace PHash
         //                 double &pcc, double threshold) 
         internal static double ph_crosscorr(Digest x, Digest y)
         {
-            int N = y.size;
+            int N = y.coeffs.Length;
             var x_coeffs = x.coeffs;
             var y_coeffs = y.coeffs;
 
@@ -182,7 +184,7 @@ namespace PHash
         {
             var projection_map = projs.R;
             var nb_perline = projs.nb_pix_perline;
-            int N = projs.size;
+            int N = projs.nb_pix_perline.Length;
             int D = projection_map.Height;
 
             var fv = new Features();
@@ -223,7 +225,7 @@ namespace PHash
 
         internal static Digest ph_dct(in Features fv) 
         {
-            int N = fv.size;
+            int N = fv.features.Length;
             const int nb_coeffs = 40;
 
             var digest = new Digest();
@@ -266,20 +268,17 @@ namespace PHash
         internal struct Digest
         {
             public byte[] coeffs;  // the head of the digest integer coefficient array
-            public int size => coeffs.Length;         // the size of the coeff array
         }
 
         internal struct Features
         {
             public double[] features;  // the head of the feature array of double's
-            public int size => features.Length;          // the size of the feature array
         }
 
         internal struct Projections
         {
             public Mat<byte> R;  // contains projections of image of angled lines through center
             public int[] nb_pix_perline;  // the head of int array denoting the number of pixels of each line
-            public int size => nb_pix_perline.Length;             // the size of nb_pix_perline
         }
     }
 }

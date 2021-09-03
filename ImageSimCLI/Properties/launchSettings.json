@@ -2,7 +2,7 @@
   "profiles": {
     "ImageSimCLI": {
       "commandName": "Project",
-      "commandLineArgs": "inter C:\\Workspace\\images"
+      "commandLineArgs": "dct C:\\Workspace\\images"
     }
   }
 }
