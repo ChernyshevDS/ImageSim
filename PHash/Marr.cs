@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using OpenCvSharp;
 
 [assembly: InternalsVisibleTo("Tests")]
@@ -9,6 +10,38 @@ namespace PHash
 {
     public static class Marr
     {
+        internal class CachedData
+        {
+            public float Alpha;
+            public float Level;
+            public Mat Kernel;
+        }
+
+        private static bool AlmostEquals(this float value, float other, float eps = float.Epsilon)
+        {
+            return MathF.Abs(value - other) < eps;
+        }
+
+        private static ThreadLocal<CachedData> LastRunCache = null;
+
+        private static Mat GetMHKernelCached(float alpha, float level)
+        {
+            if (LastRunCache == null)
+            {
+                LastRunCache = new ThreadLocal<CachedData>(() => new CachedData());
+            }
+
+            if (!LastRunCache.Value.Alpha.AlmostEquals(alpha, 1e-6f)
+                || !LastRunCache.Value.Level.AlmostEquals(level, 1e-6f))
+            {
+                
+                LastRunCache.Value.Alpha = alpha;
+                LastRunCache.Value.Level = level;
+                LastRunCache.Value.Kernel = GetMHKernel(alpha, level);
+            }
+            return LastRunCache.Value.Kernel;
+        }
+
         public static byte[] GetImageHash(string filename, float alpha = 2.0f, float lvl = 1.0f)
         {
             if (string.IsNullOrEmpty(filename))
@@ -36,9 +69,9 @@ namespace PHash
                 Cv2.EqualizeHist(tmp, tmp);
                 img = tmp;
             }
-            var pMHKernel = GetMHKernel(alpha, lvl);
+            var pMHKernel = GetMHKernelCached(alpha, lvl);
 
-            var img_f = new Mat<float>(img.Size());
+            using var img_f = new Mat<float>(img.Size());
             img.ConvertTo(img_f, img_f.Type(), 1 / 255.0);
 
             var fresp = new Mat(img.Size(), MatType.CV_32FC1);
