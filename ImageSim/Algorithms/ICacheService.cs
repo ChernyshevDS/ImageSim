@@ -1,11 +1,13 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace ImageSim.Algorithms
 {
     public interface ICacheService<TFeature> : IReadOnlyCollection<KeyValuePair<string, TFeature>>
+        where TFeature: class
     {
-        bool TryGetValue(string key, out TFeature value);
-        void Add(string key, TFeature feature);
-        bool Remove(string key);
+        ValueTask<TFeature> TryGetValue(string key);
+        ValueTask Add(string key, TFeature feature);
+        ValueTask<bool> Remove(string key);
     }
 }

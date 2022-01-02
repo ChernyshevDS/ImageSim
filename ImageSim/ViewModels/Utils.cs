@@ -6,13 +6,6 @@ namespace ImageSim.ViewModels
 {
     public static class Utils
     {
-        public static byte[] GetFileHash(string path)
-        {
-            using var fs = File.OpenRead(path);
-            var alg = System.Security.Cryptography.MD5.Create();
-            return alg.ComputeHash(fs);
-        }
-
         public static string ToHexString(this byte[] data)
         {
             return BitConverter.ToString(data).Replace("-", string.Empty).ToUpperInvariant();

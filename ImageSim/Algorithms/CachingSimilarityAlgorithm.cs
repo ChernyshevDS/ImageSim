@@ -1,6 +1,9 @@
-﻿namespace ImageSim.Algorithms
+﻿using System.Threading.Tasks;
+
+namespace ImageSim.Algorithms
 {
     public class CachingSimilarityAlgorithm<T> : ISimilarityAlgorithm
+        where T: class
     {
         private readonly ICacheService<T> CacheService;
         private readonly IHashingAlgorithm<T> HashingAlgorithm;
@@ -11,24 +14,25 @@
             HashingAlgorithm = hashingAlgorithm;
         }
 
-        private T GetOrCreateDescriptor(string path)
+        private async ValueTask<T> GetOrCreateDescriptor(string path)
         {
-            if (CacheService.TryGetValue(path, out T value))
+            var value = await CacheService.TryGetValue(path);
+            if (value != null)
             {
                 return value;
             }
             else 
             {
                 var descriptor = HashingAlgorithm.GetDescriptor(path);
-                CacheService.Add(path, descriptor);
+                await CacheService.Add(path, descriptor);
                 return descriptor;
             }
         }
 
-        public double GetSimilarity(string left, string right)
+        public async ValueTask<double> GetSimilarity(string left, string right)
         {
-            var dLeft = GetOrCreateDescriptor(left);
-            var dRight = GetOrCreateDescriptor(right);
+            var dLeft = await GetOrCreateDescriptor(left);
+            var dRight = await GetOrCreateDescriptor (right);
             return HashingAlgorithm.GetSimilarity(dLeft, dRight);
         }
     }

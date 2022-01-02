@@ -157,7 +157,7 @@ namespace PHash
             {
                 impl = OpenCvSharp.ImgHash.PHash.Create();
             }
-            
+
             public Descriptor GetDescriptor(string path)
             {
                 using var mat = Utils.LoadImage(path);

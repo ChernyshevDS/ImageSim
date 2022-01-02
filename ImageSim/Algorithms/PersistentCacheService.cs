@@ -1,8 +1,9 @@
 ﻿using ImageSim.Services;
+using System.Threading.Tasks;
 
 namespace ImageSim.Algorithms
 {
-    public class PersistentCacheService<T> : RamCacheService<T> where T : IBinarySerializable, new()
+    public class PersistentCacheService<T> : RamCacheService<T> where T : class, IBinarySerializable, new()
     {
         private readonly IFileDataStorage storage;
         private readonly string dataKey;
@@ -13,45 +14,46 @@ namespace ImageSim.Algorithms
             this.dataKey = dataKey;
         }
         
-        public override void Add(string path, T feature)
+        public override async ValueTask Add(string path, T feature)
         {
-            var cachedRecord = storage.GetFileRecordAsync(path).Result;
+            var cachedRecord = await storage.GetFileRecordAsync(path);
             if (cachedRecord == null)   //no cache record found
                 cachedRecord = PersistentFileRecord.Create(path);
 
             cachedRecord.SetData(dataKey, feature);
-            storage.UpdateFileRecordAsync(path, cachedRecord).Wait();
+            await storage.UpdateFileRecordAsync(path, cachedRecord);
 
             //System.Diagnostics.Debug.WriteLine($"{System.IO.Path.GetFileName(path)}: cache updated");
-            base.Add(path, feature);
+            await base.Add(path, feature);
         }
 
-        public override bool TryGetValue(string key, out T value)
+        public override async ValueTask<T> TryGetValue(string key)
         {
-            if (base.TryGetValue(key, out value))   //cache is already loaded
-                return true;
+            var value = await base.TryGetValue(key);
+            if (value != null)   //cache is already loaded
+                return value;
 
-            var cachedRecord = storage.GetFileRecordAsync(key).Result;
+            var cachedRecord = await storage.GetFileRecordAsync(key);
             if (cachedRecord == null)   //no cache record found
-                return false;
+                return null;
 
             var time = PersistentFileRecord.ReadModificationTime(key);
             if (!time.HasValue) //current file can't be read - skip
-                return false;
+                return null;
 
             if (cachedRecord.Modified != time)  //cached value expired
             {
-                storage.RemoveFileRecordAsync(key).Wait();
-                return false;
+                await storage.RemoveFileRecordAsync(key);
+                return null;
             }
 
             if (!cachedRecord.TryGetData<T>(dataKey, out T data))   //no cached Hash
-                return false;
+                return null;
 
             //success - use cached value
-            base.Add(key, data);
+            await base.Add(key, data);
             value = data;
-            return true;
+            return value;
         }
     }
 }

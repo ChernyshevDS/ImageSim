@@ -315,24 +315,43 @@ namespace ImageSim.ViewModels
             var alg = new MD5FileSimilarityAlgorithm();
             var cache = new PersistentCacheService<MD5HashDescriptor>(FileStorage, alg.Name);
 
-            var results = await TaskExtensions.ForEachAsync(FilesVM.LocatedFiles, x => Task.Run(() =>
-            {
-                if (ctrl.IsCanceled)
-                    return false;
+            var tokenSource = new CancellationTokenSource();
 
-                if (!cache.TryGetValue(x, out MD5HashDescriptor hash))
+            var computingTask = TaskExtensions.ForEachAsync(FilesVM.LocatedFiles, async x =>
+            {
+                if (tokenSource.IsCancellationRequested)
+                    return;
+
+                var hash = await cache.TryGetValue(x);
+                if (hash == null)
                 {
                     hash = alg.GetDescriptor(x);
-                    cache.Add(x, hash);
+                    await cache.Add(x, hash);
                 }
 
-                var proc = Interlocked.Increment(ref processed);
+                Interlocked.Increment(ref processed);
+            }, thread_count);
 
-                var progress = (double)proc / total;
-                ctrl.SetProgress(progress);
-                ctrl.SetMessage($"Hashed {proc} of {total}");
-                return true;
-            }), thread_count);
+            var reportingTask = Task.Run(() =>
+            {
+                while (!computingTask.IsCompleted)
+                {
+                    if (ctrl.IsCanceled)
+                    {
+                        tokenSource.Cancel();
+                        return;
+                    }
+
+                    var proc = Volatile.Read(ref processed);
+                    var progress = (double)proc / total;
+                    ctrl.SetProgress(progress);
+                    ctrl.SetMessage($"Hashed {proc} of {total}");
+
+                    Thread.Sleep(100);
+                }
+            });
+
+            await Task.WhenAll(computingTask, reportingTask);
 
             if (ctrl.IsCanceled)
             {
@@ -343,10 +362,12 @@ namespace ImageSim.ViewModels
             ctrl.SetIndeterminate();
             ctrl.SetMessage("Searching for hash conflicts...");
 
-            var groups = cache
-                .GroupBy(x => x.Value, new MD5HashComparer())
-                .Where(x => x.Count() > 1)
-                .ToList();
+            var groups = await Task.Run(() => {
+                return cache
+                    .GroupBy(x => x.Value, new MD5HashComparer())
+                    .Where(x => x.Count() > 1)
+                    .ToList();
+            });
 
             if (!groups.Any())
             {
@@ -493,7 +514,7 @@ namespace ImageSim.ViewModels
                     //System.Diagnostics.Debug.WriteLine($"Started: {nRun}");
                     await foreach (var pair in ch.Reader.ReadAllAsync())
                     {
-                        var metric = similarityAlg.GetSimilarity(pair.Item1, pair.Item2);
+                        var metric = await similarityAlg.GetSimilarity(pair.Item1, pair.Item2);
                         if(metric >= threshold)
                             bag.Add(new ConflictDescriptor(pair.Item1, pair.Item2, metric));
 
